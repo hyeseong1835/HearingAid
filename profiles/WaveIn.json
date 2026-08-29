@@ -1,0 +1,6 @@
+{
+  "audioSource": {
+    "type": "WaveIn",
+    "deviceKeyword": "CABLE Output"
+  }
+}
