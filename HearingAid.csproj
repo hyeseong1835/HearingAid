@@ -20,7 +20,7 @@
     <None Include="profiles\**\*.json" Condition="Exists('profiles')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="whisper\*.exe;whisper\*.dll;whisper\*.bin" Condition="Exists('whisper')">
+    <None Include="whisper\*.exe;whisper\*.dll" Condition="Exists('whisper')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

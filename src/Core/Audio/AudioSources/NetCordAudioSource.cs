@@ -1,6 +1,6 @@
-using System.ComponentModel;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.ComponentModel;
 using NAudio.Dsp;
 using NetCord;
 using NetCord.Gateway;
@@ -396,14 +396,25 @@ public class NetCordAudioSource : IAudioSource
         lock (userDataMap)
         {
             created = false == userDataMap.TryGetValue(userId, out UserData? existing);
-            userData = existing ?? new UserData(userId, new UserConfig
+            userData = existing?? new UserData(
+                userId, 
+                new UserConfig
+                {
+                    userId = userId,
+                    lowPassCutoffHz = lowPassCutoffHz,
+                    lowPassQ = lowPassQ,
+                    gain = gain
+                }, 
+                new SileroVad(AudioPipeline.VadModelPath), 
+                vadThreshold, 
+                minSilenceMs, 
+                speechPadMs, 
+                minSpeechMs
+            );
+            if (created) 
             {
-                userId = userId,
-                lowPassCutoffHz = lowPassCutoffHz,
-                lowPassQ = lowPassQ,
-                gain = gain
-            }, new SileroVad(AudioPipeline.VadModelPath), vadThreshold, minSilenceMs, speechPadMs, minSpeechMs);
-            if (created) userDataMap[userId] = userData;
+                userDataMap[userId] = userData;
+            }
         }
 
         if (string.IsNullOrEmpty(userData.config.name))
@@ -474,7 +485,9 @@ public class NetCordAudioSource : IAudioSource
     ValueTask OnGuildUserChunkAsync(GuildUserChunkEventArgs args)
     {
         foreach (GuildUser user in args.Users)
+        {
             ApplyResolvedUser(user);
+        }
         return default;
     }
 
