@@ -33,8 +33,12 @@ foreach ($rel in $required) {
     $p = Join-Path $OutDir $rel
     if (-not (Test-Path $p)) { throw "배포 결과물에 필수 파일이 없습니다: $p" }
 }
-if (-not (Test-Path (Join-Path $OutDir "profiles"))) {
-    Write-Warning "profiles\ 폴더가 배포 결과물에 없습니다 (repo에 profiles가 없다면 정상)"
+# Whisper 네이티브 런타임: Vulkan(GPU)과 CPU 폴백이 둘 다 있어야 GPU 없는 PC에서도 동작한다.
+foreach ($rt in @("runtimes\vulkan\win-x64", "runtimes\win-x64")) {
+    $p = Join-Path $OutDir $rt
+    if (-not (Get-ChildItem $p -Filter "*whisper*.dll" -ErrorAction SilentlyContinue)) {
+        throw "배포 결과물에 Whisper 런타임이 없습니다: $p"
+    }
 }
 $models = Get-ChildItem $OutDir -Recurse -Filter "ggml-*.bin"
 if ($models) { throw "배포 결과물에 모델 파일이 들어 있습니다: $($models.FullName -join ', ')" }
@@ -43,11 +47,20 @@ New-Item -ItemType Directory -Force -Path $ReleaseDir | Out-Null
 $zipPath = Join-Path $ReleaseDir "HearingAid-$Version-$Runtime.zip"
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
 
-# Compress-Archive(PowerShell 5.1)는 zip 안 경로에 역슬래시를 쓰므로 ZipFile을 직접 쓴다.
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-[System.IO.Compression.ZipFile]::CreateFromDirectory(
-    (Resolve-Path $OutDir).Path, (Join-Path (Resolve-Path $ReleaseDir).Path (Split-Path $zipPath -Leaf)),
-    [System.IO.Compression.CompressionLevel]::Optimal, $false)
+# PowerShell 5.1(.NET Framework)의 Compress-Archive와 ZipFile.CreateFromDirectory는 zip 안 경로에
+# 역슬래시를 쓴다. zip 표준은 슬래시이므로 항목을 하나씩 슬래시 경로로 추가한다.
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+$srcRoot = (Resolve-Path $OutDir).Path.TrimEnd('\') + '\'
+$zipFull = Join-Path (Resolve-Path $ReleaseDir).Path (Split-Path $zipPath -Leaf)
+$zip = [System.IO.Compression.ZipFile]::Open($zipFull, [System.IO.Compression.ZipArchiveMode]::Create)
+try {
+    foreach ($file in Get-ChildItem $srcRoot -Recurse -File) {
+        $entryName = $file.FullName.Substring($srcRoot.Length).Replace('\', '/')
+        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+            $zip, $file.FullName, $entryName, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+    }
+}
+finally { $zip.Dispose() }
 
 $sizeMb = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
 Write-Host "패키징 완료: $zipPath ($sizeMb MB)"
