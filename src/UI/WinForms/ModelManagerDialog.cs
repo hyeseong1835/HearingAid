@@ -32,6 +32,8 @@ public class ModelManagerDialog : Form
         this.engineRunning = engineRunning;
         this.firstRun = firstRun;
         BuildUi();
+        Theme.Apply(this);
+        Theme.StyleButton(downloadBtn, Theme.ButtonKind.Primary);
         RefreshList(firstRun ? ModelStore.RecommendedId : null);
     }
 
@@ -65,13 +67,14 @@ public class ModelManagerDialog : Form
         list.MultiSelect = false;
         list.HideSelection = false;
         list.HeaderStyle = ColumnHeaderStyle.Nonclickable;
-        list.BackColor = Color.FromArgb(30, 30, 34);
+        list.BackColor = Theme.Background;
+        list.SmallImageList = new ImageList { ImageSize = new Size(1, 28) }; // 행 높이를 넓히기 위한 빈 이미지 목록
         list.ForeColor = Color.Gainsboro;
         list.BorderStyle = BorderStyle.None;
-        list.Columns.Add("모델", 190);
+        list.Columns.Add("모델", 180);
         list.Columns.Add("크기", 80);
-        list.Columns.Add("상태", 110);
-        list.Columns.Add("설명", 340);
+        list.Columns.Add("상태", 130);
+        list.Columns.Add("설명", 330);
         list.SelectedIndexChanged += (s, e) => UpdateButtons();
         list.DoubleClick += async (s, e) => { if (downloadBtn.Enabled) await DownloadSelectedAsync(); };
 
@@ -92,7 +95,7 @@ public class ModelManagerDialog : Form
         closeBtn.Click += (s, e) => Close();
         buttons.Controls.AddRange([downloadBtn, cancelBtn, deleteBtn, defaultBtn, closeBtn]);
 
-        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 90, Padding = new Padding(4, 4, 4, 0) };
+        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 90, Padding = new Padding(8, 6, 8, 0), BackColor = Theme.Surface };
         bottom.Controls.Add(buttons);
         bottom.Controls.Add(progressLabel);
         bottom.Controls.Add(progress);

@@ -24,6 +24,8 @@ public class UpdateDialog : Form
         this.release = release;
         this.engineRunning = engineRunning;
         BuildUi();
+        Theme.Apply(this);
+        Theme.StyleButton(updateBtn, Theme.ButtonKind.Primary);
     }
 
     void BuildUi()

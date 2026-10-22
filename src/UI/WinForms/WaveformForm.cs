@@ -16,6 +16,7 @@ class WaveformForm : Form
         Height = 220;
         BackColor = Color.FromArgb(24, 24, 28);
         Controls.Add(panel);
+        Theme.Apply(this);
     }
 
     public void AttachEngine(ITranscriber e)

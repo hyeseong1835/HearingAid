@@ -28,5 +28,7 @@ class ExportDialog : Form
 
         Controls.Add(txtBtn); Controls.Add(csvBtn); Controls.Add(cancelBtn);
         CancelButton = cancelBtn;
+
+        Theme.Apply(this);
     }
 }

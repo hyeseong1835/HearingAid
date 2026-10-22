@@ -20,12 +20,10 @@
 
 **🚀 빠른 시작:** [Releases](https://github.com/Hyeseong1835/HearingAid/releases/latest)에서 zip을 받아 풀고 `HearingAid.exe`를 실행하세요. 처음 실행하면 모델 다운로드 화면이 안내합니다.
 
-<!-- 스크린샷: docs/images/main.png 를 추가한 뒤 아래 주석을 해제하세요.
 <div align="center">
   <img src="docs/images/main.png" alt="HearingAid 메인 화면" width="80%" />
-  <br><em style="font-size:80%">HearingAid 메인 화면</em>
+  <br><em style="font-size:80%">메인 화면</em>
 </div>
--->
 
 ## ✨ 기능
 
@@ -41,11 +39,22 @@
 - **🗂️ 프로필**
 
   오디오 소스와 설정을 프로필로 저장해 두고 클릭 한 번으로 바꿔 씁니다.
+  설정마다 설명이 붙어 있어 각 값이 무엇인지 화면에서 바로 알 수 있습니다.
+
+  <div align="center">
+    <img src="docs/images/profile.png" alt="프로필 설정 화면" width="70%" />
+    <br><em style="font-size:80%">프로필 설정</em>
+  </div>
 
 - **🧠 모델 선택**
 
   가벼운 `tiny`부터 정확한 `large-v3`까지 앱 안에서 받아 둘 수 있습니다.
   **프로필별**, **화자별**로 다른 모델을 지정할 수 있습니다.
+
+  <div align="center">
+    <img src="docs/images/models.png" alt="모델 관리 화면" width="70%" />
+    <br><em style="font-size:80%">모델 관리</em>
+  </div>
 
 - **⚡ GPU 가속**
 

@@ -73,10 +73,34 @@ public class ProfileSettingsForm : Form
         this.baseConfigPath = baseConfigPath;
         this.profilesDir = profilesDir;
         BuildUi();
+        Theme.Apply(this);
+        Theme.StyleButton(saveBtn, Theme.ButtonKind.Primary);
         RefreshList();
     }
 
     string ProfilePath(string name) => Path.Combine(profilesDir, name + ".json");
+
+    /// <summary>사이드바 항목: 선택된 항목은 강조색 막대, 사용 중인 프로필은 초록 점으로 표시한다.</summary>
+    void DrawProfileItem(object? sender, DrawItemEventArgs e)
+    {
+        if (e.Index < 0 || list.Items[e.Index] is not ProfileItem item) return;
+        bool isSelected = (e.State & DrawItemState.Selected) != 0;
+
+        using (var back = new SolidBrush(isSelected ? Theme.Control : Theme.Surface))
+            e.Graphics.FillRectangle(back, e.Bounds);
+        if (isSelected)
+            using (var bar = new SolidBrush(Theme.Accent))
+                e.Graphics.FillRectangle(bar, e.Bounds.Left, e.Bounds.Top + 6, 3, e.Bounds.Height - 12);
+
+        if (item.Active)
+            using (var dot = new SolidBrush(Theme.Success))
+                e.Graphics.FillEllipse(dot, e.Bounds.Left + 12, e.Bounds.Top + e.Bounds.Height / 2 - 4, 8, 8);
+
+        var textBounds = new Rectangle(e.Bounds.Left + 28, e.Bounds.Top, e.Bounds.Width - 32, e.Bounds.Height);
+        TextRenderer.DrawText(e.Graphics, item.Name ?? "(기본값)", list.Font, textBounds,
+            item.Name is null ? Theme.SubText : Theme.Text,
+            TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+    }
 
     void BuildUi()
     {
@@ -90,15 +114,18 @@ public class ProfileSettingsForm : Form
         ForeColor = Color.Gainsboro;
 
         // --- 사이드바 (좌) ---
-        var sidebar = new Panel { Dock = DockStyle.Left, Width = 220 };
+        var sidebar = new Panel { Dock = DockStyle.Left, Width = 220, BackColor = Theme.Surface };
         list.Dock = DockStyle.Fill;
-        list.BackColor = Color.FromArgb(24, 24, 28);
-        list.ForeColor = Color.Gainsboro;
+        list.BackColor = Theme.Surface;
+        list.ForeColor = Theme.Text;
         list.BorderStyle = BorderStyle.None;
         list.IntegralHeight = false;
+        list.DrawMode = DrawMode.OwnerDrawFixed;
+        list.ItemHeight = 34;
+        list.DrawItem += DrawProfileItem;
         list.SelectedIndexChanged += (s, e) => { if (!suppressSelection) OnSelectionChanged(); };
 
-        var sideButtons = new Panel { Dock = DockStyle.Bottom, Height = 36 };
+        var sideButtons = new Panel { Dock = DockStyle.Bottom, Height = 40, BackColor = Theme.Surface };
         addBtn.Text = "+ 추가"; addBtn.Width = 100; addBtn.Height = 28; addBtn.Location = new Point(4, 4);
         addBtn.Click += (s, e) => AddNew();
         removeBtn.Text = "- 제거"; removeBtn.Width = 100; removeBtn.Height = 28; removeBtn.Location = new Point(110, 4);
@@ -112,7 +139,7 @@ public class ProfileSettingsForm : Form
         // --- 상세 패널 (우) ---
         detailTitle.AutoSize = true;
         detailTitle.Margin = new Padding(12, 8, 0, 8);
-        detailTitle.Font = new Font("Segoe UI", 11, FontStyle.Bold);
+        detailTitle.Font = new Font("Segoe UI", 14, FontStyle.Bold);
 
         baseNoteLabel.AutoSize = true;
         baseNoteLabel.Margin = new Padding(12, 0, 12, 0);
@@ -130,7 +157,7 @@ public class ProfileSettingsForm : Form
         modelCombo.Location = new Point(160, 1);
         modelCombo.Width = 200;
 
-        modelHeaderPanel.Height = 32;
+        modelHeaderPanel.Size = new Size(560, 34); // 폭을 안 주면 기본 200px라 오른쪽 콤보박스가 잘린다
         modelHeaderPanel.Margin = new Padding(0, 0, 0, 4);
         modelHeaderPanel.Controls.Add(overrideModelCheck);
         modelHeaderPanel.Controls.Add(modelCombo);
@@ -204,7 +231,7 @@ public class ProfileSettingsForm : Form
             UpdateButtons();
         };
 
-        overrideHeaderPanel.Height = 32;
+        overrideHeaderPanel.Size = new Size(560, 34);
         overrideHeaderPanel.Margin = new Padding(0, 0, 0, 4);
         overrideHeaderPanel.Controls.Add(overrideAudioSourceCheck);
         overrideHeaderPanel.Controls.Add(typeCombo);
@@ -238,6 +265,7 @@ public class ProfileSettingsForm : Form
 
         var body = new Panel { Dock = DockStyle.Fill };
         body.Controls.Add(detailScroll);
+        body.Controls.Add(new Panel { Dock = DockStyle.Left, Width = 1, BackColor = Theme.Border });
         body.Controls.Add(sidebar);
 
         // --- 하단 바 ---
@@ -261,12 +289,13 @@ public class ProfileSettingsForm : Form
         buttons.Controls.Add(refreshBtn);
         buttons.Controls.Add(closeBtn);
 
-        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 96 };
+        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 96, BackColor = Theme.Surface, Padding = new Padding(8, 0, 8, 0) };
         bottom.Controls.Add(buttons);
         bottom.Controls.Add(hint);
         bottom.Controls.Add(current);
 
         Controls.Add(body);
+        Controls.Add(new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = Theme.Border });
         Controls.Add(bottom);
     }
 
@@ -287,9 +316,11 @@ public class ProfileSettingsForm : Form
 
             current.Text = $"현재 프로필: {engine.Config.EffectiveProfileName ?? "(기본값)"}";
 
-            int idx = -1;
-            if (hadSelection)
-                idx = list.Items.Cast<ProfileItem>().ToList().FindIndex(i => string.Equals(i.Name, keepName, StringComparison.OrdinalIgnoreCase));
+            // 처음 열 때는 지금 사용 중인 프로필을, 이후에는 보던 프로필을 그대로 선택한다.
+            var items = list.Items.Cast<ProfileItem>().ToList();
+            int idx = hadSelection
+                ? items.FindIndex(i => string.Equals(i.Name, keepName, StringComparison.OrdinalIgnoreCase))
+                : items.FindIndex(i => i.Active);
 
             list.SelectedIndex = idx >= 0 ? idx : 0;
         }

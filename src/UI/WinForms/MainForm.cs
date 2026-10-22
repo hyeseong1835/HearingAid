@@ -36,67 +36,63 @@ public class MainForm : Form
     void BuildUi()
     {
         Text = $"HearingAid v{AppUpdater.CurrentVersion.ToString(3)}";
-        Width = 880; Height = 560;
-        Font = new Font("Segoe UI", 10);
+        Width = 980; Height = 620;
+        MinimumSize = new Size(760, 420);
+        StartPosition = FormStartPosition.CenterScreen;
+        Font = Theme.Font;
 
-        // 상단 바
-        var top = new Panel { Dock = DockStyle.Top, Height = 48 };
-        toggleBtn.Text = "시작";
-        toggleBtn.Width = 80; toggleBtn.Height = 32;
-        toggleBtn.Location = new Point(8, 8);
+        // --- 상단 도구 모음: 왼쪽은 캡처 제어, 오른쪽은 보조 기능 ---
+        var toolbar = new Panel { Dock = DockStyle.Top, Height = 56, BackColor = Theme.Surface, Padding = new Padding(10, 10, 10, 0) };
+
+        var left = new FlowLayoutPanel { Dock = DockStyle.Left, AutoSize = true, WrapContents = false, BackColor = Theme.Surface };
+        toggleBtn.Size = new Size(104, 36);
+        toggleBtn.Margin = new Padding(0, 0, 8, 0);
         toggleBtn.Click += async (s, e) => await ToggleAsync();
-        top.Controls.Add(toggleBtn);
-
-        autoScroll.Text = "자동 스크롤";
-        autoScroll.Checked = true;
-        autoScroll.Location = new Point(100, 14);
-        autoScroll.AutoSize = true;
-        top.Controls.Add(autoScroll);
-
-        profileBtn.Width = 130; profileBtn.Height = 32;
-        profileBtn.Location = new Point(200, 8);
+        profileBtn.Size = new Size(200, 36);
+        profileBtn.TextAlign = ContentAlignment.MiddleLeft;
+        profileBtn.Padding = new Padding(6, 0, 0, 0);
+        profileBtn.AutoEllipsis = true;
         profileBtn.Click += (s, e) => OpenProfileSettings();
-        top.Controls.Add(profileBtn);
+        left.Controls.AddRange([toggleBtn, profileBtn]);
 
-        var clearBtn = new Button { Text = "지우기", Width = 70, Height = 32, Location = new Point(336, 8) };
-        clearBtn.Click += (s, e) => { list.Items.Clear(); pendingItems.Clear(); };
-        top.Controls.Add(clearBtn);
-
-        var refreshBtn = new Button { Text = "새로고침", Width = 90, Height = 32, Location = new Point(412, 8) };
-        refreshBtn.Click += (s, e) => RefreshRecodes();
-        top.Controls.Add(refreshBtn);
-
-        var exportBtn = new Button { Text = "내보내기", Width = 90, Height = 32, Location = new Point(508, 8) };
-        exportBtn.Click += (s, e) => Export();
-        top.Controls.Add(exportBtn);
-
-        var waveBtn = new Button { Text = "파형", Width = 60, Height = 32, Location = new Point(604, 8) };
-        waveBtn.Click += (s, e) => OpenWaveform();
-        top.Controls.Add(waveBtn);
-
-        var modelBtn = new Button { Text = "모델", Width = 60, Height = 32, Location = new Point(670, 8) };
-        modelBtn.Click += (s, e) => OpenModelManager();
-        top.Controls.Add(modelBtn);
-
-        updateBtn.Text = "업데이트"; updateBtn.Width = 130; updateBtn.Height = 32; updateBtn.Location = new Point(736, 8);
+        var right = new FlowLayoutPanel { Dock = DockStyle.Right, AutoSize = true, WrapContents = false, BackColor = Theme.Surface };
+        updateBtn.Text = "업데이트";
         updateBtn.Click += async (s, e) => await OnUpdateClickedAsync();
-        top.Controls.Add(updateBtn);
+        right.Controls.AddRange([
+            ToolButton("파형", (s, e) => OpenWaveform()),
+            ToolButton("모델", (s, e) => OpenModelManager()),
+            ToolButton("내보내기", (s, e) => Export()),
+            ToolButton("지우기", (s, e) => { list.Items.Clear(); pendingItems.Clear(); UpdateEmptyHint(); }),
+            ToolButton("새로고침", (s, e) => RefreshRecodes()),
+        ]);
+        updateBtn.Size = new Size(124, 36);
+        updateBtn.Margin = new Padding(6, 0, 0, 0);
+        right.Controls.Add(updateBtn);
 
-        // 리스트
+        toolbar.Controls.Add(right);
+        toolbar.Controls.Add(left);
+        var toolbarLine = new Panel { Dock = DockStyle.Top, Height = 1, BackColor = Theme.Border };
+
+        // --- 받아 적은 내용 목록 ---
         list.Dock = DockStyle.Fill;
         list.View = View.Details;
         list.FullRowSelect = true;
-        list.GridLines = false;
         list.HeaderStyle = ColumnHeaderStyle.Nonclickable;
-        list.OwnerDraw = false;
-        list.BackColor = Color.FromArgb(24, 24, 28);
-        list.ForeColor = Color.Gainsboro;
+        list.BackColor = Theme.Background;
+        list.ForeColor = Theme.Text;
         list.Font = new Font("Segoe UI", 11);
         list.BorderStyle = BorderStyle.None;
+        list.ShowItemToolTips = true;
+        // 행 높이는 ListView에 직접 설정할 방법이 없어, 높이만 있는 빈 이미지 목록으로 넓힌다.
+        list.SmallImageList = new ImageList { ImageSize = new Size(1, 32) };
+        list.OwnerDraw = true;
+        list.DrawColumnHeader += (s, e) => Theme.DrawHeader(e, Theme.Font);
+        list.DrawItem += (s, e) => { };
+        list.DrawSubItem += (s, e) => Theme.DrawCell(e, list);
 
-        list.Columns.Add("시간", 90);
-        list.Columns.Add("화자", 90);
-        list.Columns.Add("텍스트", 470);
+        list.Columns.Add("시간", 96);
+        list.Columns.Add("화자", 130);
+        list.Columns.Add("내용", 600);
 
         // 텍스트 열이 창 크기에 맞게 늘어나도록
         list.Resize += (s, e) => FitTextColumn();
@@ -107,18 +103,71 @@ public class MainForm : Form
                 e.Cancel = true;
         };
 
-        // 상태 바
-        status.Dock = DockStyle.Bottom;
-        status.Height = 24;
+        emptyHint.Dock = DockStyle.Fill;
+        emptyHint.TextAlign = ContentAlignment.MiddleCenter;
+        emptyHint.ForeColor = Theme.SubText;
+        emptyHint.BackColor = Theme.Background;
+        emptyHint.Font = new Font("Segoe UI", 11);
+        emptyHint.Text = "▶ 시작을 누르면 들리는 말이 여기에 받아 적힙니다.\n\n" +
+                         "듣는 대상은 '프로필'에서 바꿀 수 있고,\n소리가 들어오는지는 '파형'에서 확인할 수 있습니다.";
+        list.Controls.Add(emptyHint);
+
+        // --- 상태 바 ---
+        var statusBar = new Panel { Dock = DockStyle.Bottom, Height = 30, BackColor = Theme.Surface, Padding = new Padding(10, 0, 10, 0) };
+        status.Dock = DockStyle.Fill;
         status.TextAlign = ContentAlignment.MiddleLeft;
-        status.BackColor = Color.FromArgb(40, 40, 46);
-        status.ForeColor = Color.Silver;
+        status.ForeColor = Theme.SubText;
+        status.AutoEllipsis = true;
         status.Text = "대기 중";
-        status.Padding = new Padding(6, 0, 0, 0);
+        autoScroll.Text = "자동 스크롤";
+        autoScroll.Checked = true;
+        autoScroll.AutoSize = true;
+        autoScroll.Dock = DockStyle.Right;
+        autoScroll.ForeColor = Theme.Text; // Flat 체크박스는 체크 표시도 ForeColor로 그리므로 흐린 색이면 체크 여부가 안 보인다
+        statusBar.Controls.Add(status);
+        statusBar.Controls.Add(autoScroll);
+        var statusLine = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = Theme.Border };
 
         Controls.Add(list);
-        Controls.Add(status);
-        Controls.Add(top);
+        Controls.Add(toolbarLine);
+        Controls.Add(toolbar);
+        Controls.Add(statusLine);
+        Controls.Add(statusBar);
+
+        Theme.Apply(this);
+        UpdateToggleButton(running: false);
+    }
+
+    readonly Label emptyHint = new();
+
+    static Button ToolButton(string text, EventHandler onClick)
+    {
+        var b = new Button { Text = text, Height = 36, AutoSize = true, MinimumSize = new Size(72, 36), Margin = new Padding(6, 0, 0, 0) };
+        b.Click += onClick;
+        return b;
+    }
+
+    void UpdateToggleButton(bool running, bool starting = false)
+    {
+        toggleBtn.Text = starting ? "시작 중..." : running ? "■  정지" : "▶  시작";
+        Theme.StyleButton(toggleBtn, running ? Theme.ButtonKind.Danger : Theme.ButtonKind.Primary);
+    }
+
+    void UpdateEmptyHint() => emptyHint.Visible = list.Items.Count == 0;
+
+    /// <summary>화자별로 구분되는 색. 같은 이름은 항상 같은 색이 되도록 이름의 해시로 고른다.</summary>
+    static readonly Color[] SpeakerPalette =
+    [
+        Color.FromArgb(110, 180, 255), Color.FromArgb(255, 170, 100), Color.FromArgb(130, 220, 140),
+        Color.FromArgb(240, 130, 180), Color.FromArgb(200, 160, 255), Color.FromArgb(250, 220, 110),
+        Color.FromArgb(100, 220, 220), Color.FromArgb(255, 140, 130),
+    ];
+
+    static Color SpeakerColor(string speaker)
+    {
+        int hash = 0;
+        foreach (char ch in speaker) hash = unchecked(hash * 31 + ch); // string.GetHashCode는 실행마다 달라서 쓰지 않는다
+        return SpeakerPalette[(int)((uint)hash % SpeakerPalette.Length)];
     }
 
     void AttachEngine(ITranscriber e)
@@ -141,9 +190,9 @@ public class MainForm : Form
 
     void RefreshFromEngine()
     {
-        toggleBtn.Text = engine.IsRunning ? "정지" : "시작";
+        UpdateToggleButton(engine.IsRunning);
         UpdateProfileButton();
-        list.Columns[SpeakerColumn].Width = engine.SpeakerRecognition ? 90 : 0;
+        list.Columns[SpeakerColumn].Width = engine.SpeakerRecognition ? 130 : 0;
         FitTextColumn();
     }
 
@@ -155,7 +204,7 @@ public class MainForm : Form
         if (w > 100) list.Columns[2].Width = w;
     }
 
-    void UpdateProfileButton() => profileBtn.Text = $"프로필: {engine.Config.EffectiveProfileName ?? "(기본값)"}";
+    void UpdateProfileButton() => profileBtn.Text = $"프로필 ·  {engine.Config.EffectiveProfileName ?? "기본값"}";
 
     void OpenProfileSettings()
     {
@@ -226,8 +275,7 @@ public class MainForm : Form
             if (availableUpdate is { } r)
             {
                 updateBtn.Text = $"업데이트 v{r.Version.ToString(3)}";
-                updateBtn.BackColor = Color.FromArgb(0, 122, 204);
-                updateBtn.ForeColor = Color.White;
+                Theme.StyleButton(updateBtn, Theme.ButtonKind.Primary);
                 status.Text = $"새 버전 v{r.Version.ToString(3)}이(가) 있습니다. 오른쪽 위 업데이트 버튼을 누르세요.";
             }
             else if (!silent)
@@ -252,14 +300,14 @@ public class MainForm : Form
         if (engine.IsRunning)
         {
             _ = engine.StopAsync();
-            toggleBtn.Text = "시작";
+            UpdateToggleButton(running: false);
         }
         else
         {
             toggleBtn.Enabled = false;
-            toggleBtn.Text = "시작 중...";
-            try { await engine.StartAsync(); toggleBtn.Text = "정지"; }
-            catch (Exception ex) { status.Text = $"오류: {ex.Message}"; toggleBtn.Text = "시작"; }
+            UpdateToggleButton(running: false, starting: true);
+            try { await engine.StartAsync(); UpdateToggleButton(running: true); }
+            catch (Exception ex) { status.Text = $"오류: {ex.Message}"; UpdateToggleButton(running: false); }
             finally { toggleBtn.Enabled = true; }
         }
     }
@@ -282,26 +330,30 @@ public class MainForm : Form
     {
         list.Items.Clear();
         pendingItems.Clear();
+        UpdateEmptyHint();
         foreach (KeyValuePair<int, TranscriptRecode> kv in engine.GetRecodes().OrderBy(kv => kv.Key))
             OnRecodeCreated(kv.Key, kv.Value);
     }
 
     void OnRecodeCreated(int id, TranscriptRecode recode) => PostToUi(() =>
     {
+        bool hasSpeaker = !string.IsNullOrEmpty(recode.speaker);
         var item = new ListViewItem(recode.time.ToString("HH:mm:ss"))
         {
-            ForeColor = Color.Gray,
+            ForeColor = Theme.SubText,
             UseItemStyleForSubItems = false
         };
-        var speakerSub = item.SubItems.Add(string.IsNullOrEmpty(recode.speaker)? "-" : recode.speaker);
-        speakerSub.ForeColor = Color.Silver;
-        var sub = item.SubItems.Add(recode.text?? "...");
-        sub.ForeColor = Color.Gray;
-        item.ToolTipText = "인식 중...";
-        list.ShowItemToolTips = true;
+        var speakerSub = item.SubItems.Add(hasSpeaker ? recode.speaker : "-");
+        speakerSub.ForeColor = hasSpeaker ? SpeakerColor(recode.speaker!) : Theme.SubText;
+        speakerSub.Font = new Font(list.Font, FontStyle.Bold);
+        // 전사가 끝나기 전에는 흐린 "…"로 두고, 글이 도착하면 OnRecodeEdited에서 본문 색으로 바꾼다.
+        var sub = item.SubItems.Add(recode.text ?? "…");
+        sub.ForeColor = recode.text is null ? Theme.SubText : Theme.Text;
+        item.ToolTipText = recode.text ?? "인식 중...";
 
         list.Items.Add(item);
         pendingItems[id] = item;
+        UpdateEmptyHint();
 
         if (autoScroll.Checked)
             item.EnsureVisible();
@@ -312,8 +364,8 @@ public class MainForm : Form
         if (!pendingItems.TryGetValue(id, out var existing)) return;
 
         existing.SubItems[2].Text = newRecode.text ?? "";
+        existing.SubItems[2].ForeColor = Theme.Text;
         existing.ToolTipText = newRecode.text;
-        list.ShowItemToolTips = true;
 
         if (autoScroll.Checked)
             existing.EnsureVisible();
@@ -323,6 +375,7 @@ public class MainForm : Form
     {
         if (pendingItems.Remove(id, out var existing))
             list.Items.Remove(existing);
+        UpdateEmptyHint();
     });
 
     void Export()

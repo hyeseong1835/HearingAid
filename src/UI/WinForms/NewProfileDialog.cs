@@ -38,6 +38,9 @@ class NewProfileDialog : Form
 
         Controls.Add(nameBox); Controls.Add(error); Controls.Add(okBtn); Controls.Add(cancelBtn);
         AcceptButton = okBtn; CancelButton = cancelBtn;
+
+        Theme.Apply(this);
+        Theme.StyleButton(okBtn, Theme.ButtonKind.Primary);
     }
 
     void TryAccept()
