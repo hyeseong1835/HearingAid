@@ -72,6 +72,13 @@ static class Theme
                 cb.ForeColor = Text;
                 UseDarkScrollBars(cb, "DarkMode_CFD");
                 BlockWheelValueChange(cb, () => cb.DroppedDown);
+                if (cb.DropDownStyle == ComboBoxStyle.DropDownList && cb.DrawMode == DrawMode.Normal)
+                {
+                    // 시스템은 선택된 항목을 흰 바탕 강조색으로 그려 어두운 화면에서 튀므로 직접 그린다.
+                    cb.DrawMode = DrawMode.OwnerDrawFixed;
+                    cb.ItemHeight = Math.Max(cb.ItemHeight, cb.Font.Height + 6);
+                    cb.DrawItem += (s, e) => DrawComboItem(cb, e);
+                }
                 break;
             case NumericUpDown nud:
                 nud.BackColor = Surface;
@@ -220,6 +227,23 @@ static class Theme
         var textBounds = Rectangle.Inflate(e.Bounds, -8, 0);
         TextRenderer.DrawText(e.Graphics, e.Header?.Text, font, textBounds, SubText,
             TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+    }
+
+    /// <summary>콤보박스 항목. 펼친 목록에서 가리킨 항목만 강조색으로 칠하고, 접힌 상태(편집 영역)는 늘 어두운 바탕이다.
+    /// GetItemText를 써서 Format 이벤트(예: 오디오 소스 표시 이름)가 그대로 반영된다.</summary>
+    static void DrawComboItem(ComboBox cb, DrawItemEventArgs e)
+    {
+        bool inEditArea = (e.State & DrawItemState.ComboBoxEdit) != 0;
+        bool highlighted = !inEditArea && (e.State & DrawItemState.Selected) != 0;
+
+        using (var back = new SolidBrush(highlighted ? Accent : Surface))
+            e.Graphics.FillRectangle(back, e.Bounds);
+        if (e.Index < 0) return;
+
+        Color color = !cb.Enabled ? SubText : highlighted ? Color.White : Text;
+        TextRenderer.DrawText(e.Graphics, cb.GetItemText(cb.Items[e.Index]), cb.Font,
+            Rectangle.Inflate(e.Bounds, -4, 0), color,
+            TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
 
     static void StyleGrid(DataGridView grid)

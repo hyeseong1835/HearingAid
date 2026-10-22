@@ -13,7 +13,9 @@ public class MainForm : Form
     readonly Label status = new();
     readonly Button toggleBtn = new();
     readonly CheckBox autoScroll = new();
-    readonly Button profileBtn = new();
+    readonly ComboBox profileCombo = new();
+    readonly Button editProfilesBtn = new();
+    bool suppressProfileSwitch;
     readonly Button updateBtn = new();
     readonly Dictionary<int, ListViewItem> pendingItems = new();
     WaveformForm? waveformForm;
@@ -36,8 +38,8 @@ public class MainForm : Form
     void BuildUi()
     {
         Text = $"HearingAid v{AppUpdater.CurrentVersion.ToString(3)}";
-        Width = 980; Height = 620;
-        MinimumSize = new Size(760, 420);
+        Width = 1080; Height = 640;
+        MinimumSize = new Size(1000, 420); // 이보다 좁으면 왼쪽(시작·프로필)과 오른쪽 버튼 묶음이 겹친다
         StartPosition = FormStartPosition.CenterScreen;
         Font = Theme.Font;
 
@@ -48,12 +50,21 @@ public class MainForm : Form
         toggleBtn.Size = new Size(104, 36);
         toggleBtn.Margin = new Padding(0, 0, 8, 0);
         toggleBtn.Click += async (s, e) => await ToggleAsync();
-        profileBtn.Size = new Size(200, 36);
-        profileBtn.TextAlign = ContentAlignment.MiddleLeft;
-        profileBtn.Padding = new Padding(6, 0, 0, 0);
-        profileBtn.AutoEllipsis = true;
-        profileBtn.Click += (s, e) => OpenProfileSettings();
-        left.Controls.AddRange([toggleBtn, profileBtn]);
+        // 프로필: 콤보박스로 바로 전환하고, 내용 편집은 옆의 별도 버튼으로 연다.
+        var profileLabel = new Label { Text = "프로필", AutoSize = true, ForeColor = Theme.SubText, Margin = new Padding(8, 9, 6, 0) };
+        profileCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+        profileCombo.Width = 190;
+        profileCombo.Margin = new Padding(0, 4, 6, 0);
+        profileCombo.SelectionChangeCommitted += (s, e) =>
+        {
+            SwitchProfile(profileCombo.SelectedItem as string);
+            list.Focus(); // 포커스가 남아 있으면 콤보박스가 선택 강조색(흰 바탕)으로 그려져 튄다
+        };
+        editProfilesBtn.Text = "⚙ 편집";
+        editProfilesBtn.Size = new Size(84, 36);
+        editProfilesBtn.Margin = new Padding(0);
+        editProfilesBtn.Click += (s, e) => OpenProfileSettings();
+        left.Controls.AddRange([toggleBtn, profileLabel, profileCombo, editProfilesBtn]);
 
         var right = new FlowLayoutPanel { Dock = DockStyle.Right, AutoSize = true, WrapContents = false, BackColor = Theme.Surface };
         updateBtn.Text = "업데이트";
@@ -136,6 +147,7 @@ public class MainForm : Form
 
         Theme.Apply(this);
         UpdateToggleButton(running: false);
+        ActiveControl = list; // 첫 포커스가 프로필 콤보박스로 가면 흰 바탕으로 강조돼 보인다
     }
 
     readonly Label emptyHint = new();
@@ -151,6 +163,8 @@ public class MainForm : Form
     {
         toggleBtn.Text = starting ? "시작 중..." : running ? "■  정지" : "▶  시작";
         Theme.StyleButton(toggleBtn, running ? Theme.ButtonKind.Danger : Theme.ButtonKind.Primary);
+        // 캡처 중에는 프로필을 바꿀 수 없다(엔진을 통째로 새로 만들기 때문).
+        profileCombo.Enabled = !running && !starting && Config.ListProfileNames(profilesDir).Count > 0;
     }
 
     void UpdateEmptyHint() => emptyHint.Visible = list.Items.Count == 0;
@@ -204,7 +218,54 @@ public class MainForm : Form
         if (w > 100) list.Columns[2].Width = w;
     }
 
-    void UpdateProfileButton() => profileBtn.Text = $"프로필 ·  {engine.Config.EffectiveProfileName ?? "기본값"}";
+    /// <summary>프로필 콤보박스를 profiles/ 목록으로 다시 채우고 지금 쓰는 프로필을 선택한다.
+    /// 프로필이 하나도 없으면 비활성화하고 안내 문구만 보인다(이때는 기본 설정으로 동작).</summary>
+    void UpdateProfileButton()
+    {
+        suppressProfileSwitch = true;
+        try
+        {
+            var names = Config.ListProfileNames(profilesDir);
+            profileCombo.Items.Clear();
+            if (names.Count == 0)
+            {
+                profileCombo.Items.Add("(프로필 없음)");
+                profileCombo.SelectedIndex = 0;
+                profileCombo.Enabled = false;
+                return;
+            }
+
+            profileCombo.Items.AddRange(names.Cast<object>().ToArray());
+            profileCombo.SelectedItem = names.FirstOrDefault(n =>
+                string.Equals(n, engine.Config.EffectiveProfileName, StringComparison.OrdinalIgnoreCase));
+            profileCombo.Enabled = !engine.IsRunning;
+        }
+        finally { suppressProfileSwitch = false; }
+    }
+
+    void SwitchProfile(string? name)
+    {
+        if (suppressProfileSwitch || name is null) return;
+        if (string.Equals(name, engine.Config.EffectiveProfileName, StringComparison.OrdinalIgnoreCase)) return;
+        if (engine.IsRunning)
+        {
+            status.Text = "캡처를 정지한 뒤 프로필을 바꿀 수 있습니다.";
+            UpdateProfileButton();
+            return;
+        }
+
+        try
+        {
+            Config.SetActiveProfile(baseConfigPath, name);
+            ReplaceEngine(Config.BuildEngine(baseConfigPath, profilesDir, name));
+            status.Text = $"프로필 '{name}'(으)로 바꿨습니다.";
+        }
+        catch (Exception ex)
+        {
+            status.Text = $"프로필 전환 실패: {ex.Message}";
+            UpdateProfileButton();
+        }
+    }
 
     void OpenProfileSettings()
     {
@@ -212,6 +273,8 @@ public class MainForm : Form
         dlg.ShowDialog(this);
         if (dlg.NewEngine is { } newEngine)
             ReplaceEngine(newEngine);
+        else
+            UpdateProfileButton(); // 편집 창에서 프로필을 추가·삭제했을 수 있다
     }
 
     void ReplaceEngine(ITranscriber newEngine)

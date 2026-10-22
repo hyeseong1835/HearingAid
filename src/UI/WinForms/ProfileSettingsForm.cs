@@ -80,6 +80,12 @@ public class ProfileSettingsForm : Form
 
     string ProfilePath(string name) => Path.Combine(profilesDir, name + ".json");
 
+    /// <summary>사용 중인 프로필 이름. "사용"을 누른 직후에는 MainForm이 아직 새 엔진으로 바꾸기 전이라
+    /// engine.Config는 이전 프로필을 가리키므로, 이 창에서 만든 NewEngine을 우선한다.</summary>
+    string? ActiveProfileName => (NewEngine ?? engine).Config.EffectiveProfileName;
+
+    bool IsActive(string? name) => name is not null && string.Equals(name, ActiveProfileName, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>사이드바 항목: 선택된 항목은 강조색 막대, 사용 중인 프로필은 초록 점으로 표시한다.</summary>
     void DrawProfileItem(object? sender, DrawItemEventArgs e)
     {
@@ -104,7 +110,7 @@ public class ProfileSettingsForm : Form
 
     void BuildUi()
     {
-        Text = "프로필 설정";
+        Text = "프로필 편집";
         Width = 820; Height = 660;
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -144,7 +150,8 @@ public class ProfileSettingsForm : Form
         baseNoteLabel.AutoSize = true;
         baseNoteLabel.Margin = new Padding(12, 0, 12, 0);
         baseNoteLabel.ForeColor = Color.Silver;
-        baseNoteLabel.Text = "(기본값)은 appsettings.json 자체이며 여기서 편집할 수 없습니다. 새 프로필을 만들어 재정의하세요.";
+        baseNoteLabel.Text = "아직 프로필이 없습니다. 왼쪽 아래 '+ 추가'로 만들어 보세요.\n" +
+                             "프로필이 없으면 기본 설정(PC 소리 전체)으로 받아 적습니다.";
         baseNoteLabel.MaximumSize = new Size(540, 0);
 
         // --- 모델 재정의 ---
@@ -278,11 +285,11 @@ public class ProfileSettingsForm : Form
         var buttons = new Panel { Dock = DockStyle.Top, Height = 44 };
         saveBtn.Text = "저장"; saveBtn.Width = 80; saveBtn.Height = 30; saveBtn.Location = new Point(4, 6);
         saveBtn.Click += (s, e) => Save();
-        applyBtn.Text = "적용"; applyBtn.Width = 80; applyBtn.Height = 30; applyBtn.Location = new Point(90, 6);
+        applyBtn.Text = "이 프로필 사용"; applyBtn.Width = 130; applyBtn.Height = 30; applyBtn.Location = new Point(90, 6);
         applyBtn.Click += async (s, e) => await ApplyAsync();
-        refreshBtn.Text = "새로고침"; refreshBtn.Width = 80; refreshBtn.Height = 30; refreshBtn.Location = new Point(176, 6);
+        refreshBtn.Text = "새로고침"; refreshBtn.Width = 80; refreshBtn.Height = 30; refreshBtn.Location = new Point(226, 6);
         refreshBtn.Click += (s, e) => RefreshList();
-        closeBtn.Text = "닫기"; closeBtn.Width = 80; closeBtn.Height = 30; closeBtn.Location = new Point(262, 6);
+        closeBtn.Text = "닫기"; closeBtn.Width = 80; closeBtn.Height = 30; closeBtn.Location = new Point(312, 6);
         closeBtn.Click += (s, e) => Close();
         buttons.Controls.Add(saveBtn);
         buttons.Controls.Add(applyBtn);
@@ -310,11 +317,10 @@ public class ProfileSettingsForm : Form
         try
         {
             list.Items.Clear();
-            list.Items.Add(new ProfileItem(null, engine.Config.EffectiveProfileName is null));
             foreach (var n in Config.ListProfileNames(profilesDir))
-                list.Items.Add(new ProfileItem(n, string.Equals(n, engine.Config.EffectiveProfileName, StringComparison.OrdinalIgnoreCase)));
+                list.Items.Add(new ProfileItem(n, IsActive(n)));
 
-            current.Text = $"현재 프로필: {engine.Config.EffectiveProfileName ?? "(기본값)"}";
+            current.Text = $"사용 중인 프로필: {ActiveProfileName ?? "없음 (기본 설정)"}";
 
             // 처음 열 때는 지금 사용 중인 프로필을, 이후에는 보던 프로필을 그대로 선택한다.
             var items = list.Items.Cast<ProfileItem>().ToList();
@@ -322,7 +328,7 @@ public class ProfileSettingsForm : Form
                 ? items.FindIndex(i => string.Equals(i.Name, keepName, StringComparison.OrdinalIgnoreCase))
                 : items.FindIndex(i => i.Active);
 
-            list.SelectedIndex = idx >= 0 ? idx : 0;
+            list.SelectedIndex = items.Count == 0 ? -1 : Math.Max(idx, 0);
         }
         finally { suppressSelection = false; }
 
@@ -332,7 +338,7 @@ public class ProfileSettingsForm : Form
         }
         else
         {
-            selected = (ProfileItem)list.SelectedItem!;
+            selected = list.SelectedItem as ProfileItem;
             UpdateButtons();
         }
     }
@@ -342,6 +348,7 @@ public class ProfileSettingsForm : Form
         if (list.SelectedItem is not ProfileItem item)
         {
             selected = null;
+            detailTitle.Text = "프로필 없음";
             RenderContentPanel();
             UpdateButtons();
             return;
@@ -356,13 +363,7 @@ public class ProfileSettingsForm : Form
         // currentRows는 여기서 비우지 않는다 — RebuildAudioSourceRows가 옛 행을 패널에서 빼고 정리한다.
         jsonErrorLabel.Text = "";
 
-        if (selected!.Name is null)
-        {
-            detailTitle.Text = "(기본값)";
-            currentPatch = new JsonObject();
-            RenderContentPanel();
-            return;
-        }
+        if (selected?.Name is null) return;
 
         detailTitle.Text = selected.Name;
         string path = ProfilePath(selected.Name);
@@ -568,22 +569,21 @@ public class ProfileSettingsForm : Form
 
     void UpdateButtons()
     {
-        bool isBase = selected?.Name is null;
-        bool jsonOk = isBase || IsOtherJsonValid();
-        bool isActive = selected is not null &&
-            string.Equals(selected.Name, engine.Config.EffectiveProfileName, StringComparison.OrdinalIgnoreCase);
+        bool hasSelection = selected?.Name is not null;
+        bool jsonOk = !hasSelection || IsOtherJsonValid();
+        bool isActive = IsActive(selected?.Name);
 
-        saveBtn.Enabled = selected is not null && !isBase && jsonOk;
-        removeBtn.Enabled = selected is not null && !isBase && !isActive;
+        saveBtn.Enabled = hasSelection && jsonOk;
+        removeBtn.Enabled = hasSelection && !isActive;
 
         if (engine.IsRunning)
         {
             applyBtn.Enabled = false;
-            hint.Text = "캡처를 정지한 뒤 프로필을 전환할 수 있습니다.";
+            hint.Text = "캡처를 정지한 뒤 프로필을 바꿀 수 있습니다.";
         }
         else
         {
-            applyBtn.Enabled = selected is not null && jsonOk;
+            applyBtn.Enabled = hasSelection && jsonOk;
             hint.Text = "";
         }
     }
@@ -648,15 +648,14 @@ public class ProfileSettingsForm : Form
 
     async Task ApplyAsync()
     {
-        if (engine.IsRunning) return;
+        if (engine.IsRunning || selected?.Name is not { } profileName) return;
         applyBtn.Enabled = false;
         try
         {
-            if (selected?.Name is not null) Save();
-            string? profileName = selected?.Name;
+            Save();
 
             NewEngine?.Dispose(); // 이전에 이 폼에서 만들었지만 MainForm에 넘기지 못한 engine(있다면) 정리
-            Config.SetActiveProfile(baseConfigPath, profileName); // Build보다 먼저: null(기본값)일 때도 정확히 반영되도록
+            Config.SetActiveProfile(baseConfigPath, profileName);
             NewEngine = Config.BuildEngine(baseConfigPath, profilesDir, profileName);
 
             RefreshList(reloadDetail: false);
@@ -682,7 +681,7 @@ public class ProfileSettingsForm : Form
     void RemoveSelected()
     {
         if (selected?.Name is not { } name) return;
-        if (string.Equals(name, engine.Config.EffectiveProfileName, StringComparison.OrdinalIgnoreCase))
+        if (IsActive(name))
         {
             MessageBox.Show(this, "현재 사용 중인 프로필은 제거할 수 없습니다.", "제거 불가", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
