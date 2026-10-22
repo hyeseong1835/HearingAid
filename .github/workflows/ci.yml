@@ -1,0 +1,18 @@
+# PR과 main 푸시마다 Windows에서 빌드해 본다. main 보호 규칙의 "필수 검사"로 이 작업(build)을 지정한다.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build
+        run: dotnet build HearingAid.csproj -c Release -warnaserror
