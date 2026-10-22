@@ -105,10 +105,14 @@ public class NetCordAudioSource : IAudioSource
                 cfg.lowPassQ > 0 ? cfg.lowPassQ : UserConfig.DefaultLowPassQ,
                 samples =>
                 {
-                    // 설정 화면에서 gain 칸을 비우면 0이 되므로, 0 이하는 "보정 없음(1배)"으로 본다.
-                    AudioEffect.Gain(samples, this.config.gain > 0 ? this.config.gain : 1f);
-                    string speaker = string.IsNullOrEmpty(this.config.name)? this.userId.ToString() : this.config.name;
-                    _ = this.channel.PushSamples(speaker, samples);
+                    try
+                    {
+                        // 설정 화면에서 gain 칸을 비우면 0이 되므로, 0 이하는 "보정 없음(1배)"으로 본다.
+                        AudioEffect.Gain(samples, this.config.gain > 0 ? this.config.gain : 1f);
+                        string speaker = string.IsNullOrEmpty(this.config.name)? this.userId.ToString() : this.config.name;
+                        _ = this.channel.PushSamples(speaker, samples);
+                    }
+                    catch (Exception ex) { CrashLog.Write("NetCord 음성 처리", ex); }
                 }
             );
         }
@@ -253,7 +257,10 @@ public class NetCordAudioSource : IAudioSource
         lock (userDataMap)
         {
             foreach (var userData in userDataMap.Values)
+            {
                 AudioChannelRemoved?.Invoke(AudioChannelRemovedParam!, this, userData.channel);
+                userData.channel.Dispose(); // 화자별 채널은 다시 시작할 때 새로 만들므로 여기서 해제한다
+            }
             userDataMap.Clear();
         }
         lock (pendingNameRequests) pendingNameRequests.Clear();

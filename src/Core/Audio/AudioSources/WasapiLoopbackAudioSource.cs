@@ -102,14 +102,21 @@ public class WasapiLoopbackAudioSource : IAudioSource
         ISampleProvider mono = new DownmixToMonoSampleProvider(floatSamples);
         resampled = new WdlResamplingSampleProvider(mono, TargetRate);
 
+        // 필드(buffer)가 아니라 지역 변수를 캡처한다. 정지할 때 필드를 null로 비우는 순간 캡처 스레드의 콜백이
+        // 아직 돌고 있으면 NullReferenceException이 나고, 이 스레드의 예외는 앱 전체를 끈다.
+        BufferedWaveProvider buf = buffer;
         recorder.DataAvailable += (data, flags, _, _) =>
         {
-            // AUDCLNT_BUFFERFLAGS_SILENT가 설정된 구간은 버퍼 내용이 정의되지 않은 값(이전에 쓰인 잔여
-            // 데이터)일 수 있어 그대로 오디오로 취급하면 안 된다 — 0으로 채워 무음으로 처리해야 한다.
-            if ((flags & AudioClientBufferFlags.Silent) != 0)
-                buffer.AddSamples(new byte[data.Length]);
-            else
-                buffer.AddSamples(data);
+            try
+            {
+                // AUDCLNT_BUFFERFLAGS_SILENT가 설정된 구간은 버퍼 내용이 정의되지 않은 값(이전에 쓰인 잔여
+                // 데이터)일 수 있어 그대로 오디오로 취급하면 안 된다 — 0으로 채워 무음으로 처리해야 한다.
+                if ((flags & AudioClientBufferFlags.Silent) != 0)
+                    buf.AddSamples(new byte[data.Length]);
+                else
+                    buf.AddSamples(data);
+            }
+            catch (Exception ex) { ReportFailure("캡처 콜백", ex); }
         };
         recorder.RecordingStopped += (s, e) =>
         {
@@ -118,13 +125,26 @@ public class WasapiLoopbackAudioSource : IAudioSource
         recorder.StartRecording();
 
         cts = new CancellationTokenSource();
-        pumpThread = new Thread(() => PumpLoop(cts.Token)) { IsBackground = true, Name = "WasapiLoopbackPump" };
+        pumpThread = new Thread(() => RunPump(cts.Token)) { IsBackground = true, Name = "WasapiLoopbackPump" };
         pumpThread.Start();
 
         IsRunning = true;
         AudioChannelCreated?.Invoke(AudioChannelCreatedParam!, this, audioChannel);
         SetStatus?.Invoke($"캡처: {Description} — listening...");
         return ValueTask.CompletedTask;
+    }
+
+    /// <summary>펌프 스레드의 예외는 잡지 않으면 앱 전체를 끈다. 기록하고 상태 표시줄에 알린 뒤 이 소스만 멈춘다.</summary>
+    void RunPump(CancellationToken token)
+    {
+        try { PumpLoop(token); }
+        catch (Exception ex) { ReportFailure("오디오 처리", ex); }
+    }
+
+    void ReportFailure(string where, Exception ex)
+    {
+        CrashLog.Write($"WasapiLoopback {where}", ex);
+        SetStatus?.Invoke($"캡처 오류({where}): {ex.Message} — 정지 후 다시 시작하세요.");
     }
 
     void PumpLoop(CancellationToken token)
