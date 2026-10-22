@@ -1,10 +1,10 @@
-# PR과 main 푸시마다 Windows에서 빌드해 본다. main 보호 규칙의 "필수 검사"로 이 작업(build)을 지정한다.
+# PR과 develop·main 푸시마다 Windows에서 빌드해 본다. 두 브랜치 보호 규칙의 "필수 검사"로 이 작업(build)을 지정한다.
 name: CI
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [develop, main]
 
 jobs:
   build:
