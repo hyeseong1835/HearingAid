@@ -9,7 +9,8 @@ class ExportDialog : Form
     public ExportDialog()
     {
         Text = "내보내기";
-        Width = 300; Height = 160;
+        // Height는 제목 표시줄까지 포함한 크기라 아래 버튼이 잘린다. 안쪽 영역 크기로 지정한다.
+        ClientSize = new Size(280, 150);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false; MinimizeBox = false;
