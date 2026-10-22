@@ -27,6 +27,7 @@
     <!-- 앱의 '문서' 창에 보일 설명서. GitHub에서 읽는 파일과 같은 파일을 실행 파일에 넣는다. -->
     <EmbeddedResource Include="docs\app\*.md" LogicalName="docs/%(Filename)%(Extension)" />
     <EmbeddedResource Include="docs\discord.md" LogicalName="docs/discord.md" />
+    <EmbeddedResource Include="docs\discord-details.md" LogicalName="docs/discord-details.md" />
   </ItemGroup>
 
   <ItemGroup>

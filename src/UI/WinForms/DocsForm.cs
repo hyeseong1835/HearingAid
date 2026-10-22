@@ -13,7 +13,7 @@ namespace HearingAid;
 public class DocsForm : Form
 {
     /// <summary>왼쪽 목록에 보일 순서. 이름은 리소스 파일 이름(확장자 제외)이고, 제목은 문서의 첫 # 제목을 쓴다.</summary>
-    static readonly string[] Order = ["getting-started", "audio-sources", "models", "discord", "troubleshooting"];
+    static readonly string[] Order = ["getting-started", "audio-sources", "models", "discord", "discord-details", "troubleshooting"];
 
     static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
         .UsePipeTables()
