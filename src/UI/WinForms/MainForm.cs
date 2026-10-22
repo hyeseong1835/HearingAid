@@ -38,10 +38,12 @@ public class MainForm : Form
     void BuildUi()
     {
         Text = $"HearingAid v{AppUpdater.CurrentVersion.ToString(3)}";
-        Width = 1080; Height = 640;
-        MinimumSize = new Size(1000, 420); // 이보다 좁으면 왼쪽(시작·프로필)과 오른쪽 버튼 묶음이 겹친다
+        Width = 1160; Height = 640;
+        MinimumSize = new Size(1080, 420); // 이보다 좁으면 왼쪽(시작·프로필)과 오른쪽 버튼 묶음이 겹친다
         StartPosition = FormStartPosition.CenterScreen;
         Font = Theme.Font;
+        KeyPreview = true;
+        KeyDown += (s, e) => { if (e.KeyCode == Keys.F1) DocsForm.Open(this); };
 
         // --- 상단 도구 모음: 왼쪽은 캡처 제어, 오른쪽은 보조 기능 ---
         var toolbar = new Panel { Dock = DockStyle.Top, Height = 56, BackColor = Theme.Surface, Padding = new Padding(10, 10, 10, 0) };
@@ -75,6 +77,7 @@ public class MainForm : Form
             ToolButton("내보내기", (s, e) => Export()),
             ToolButton("지우기", (s, e) => { list.Items.Clear(); pendingItems.Clear(); UpdateEmptyHint(); }),
             ToolButton("새로고침", (s, e) => RefreshRecodes()),
+            ToolButton("문서", (s, e) => DocsForm.Open(this)),
         ]);
         updateBtn.Size = new Size(124, 36);
         updateBtn.Margin = new Padding(6, 0, 0, 0);
@@ -117,15 +120,19 @@ public class MainForm : Form
         list.DrawSubItem += (s, e) => Theme.DrawCell(e, list);
 
         list.Columns.Add("시간", 96);
+        list.Columns.Add("소스", 0);
         list.Columns.Add("화자", 130);
         list.Columns.Add("내용", 600);
 
         // 텍스트 열이 창 크기에 맞게 늘어나도록
         list.Resize += (s, e) => FitTextColumn();
-        // 화자를 구분하지 않는 소스에서는 화자 열을 폭 0으로 숨긴다. 사용자가 경계를 끌어 다시 펼치지 못하게 막는다.
+        // 화자를 구분하지 않는 소스에서는 화자 열을, 소스가 하나뿐이면 소스 열을 폭 0으로 숨긴다.
+        // 사용자가 경계를 끌어 다시 펼치지 못하게 막는다.
         list.ColumnWidthChanging += (s, e) =>
         {
-            if (e.ColumnIndex == SpeakerColumn && e.NewWidth != 0 && engine is not null && !engine.SpeakerRecognition)
+            if (e.NewWidth == 0 || engine is null) return;
+            if ((e.ColumnIndex == SpeakerColumn && !engine.SpeakerRecognition)
+                || (e.ColumnIndex == SourceColumn && !MultipleSources))
                 e.Cancel = true;
         };
 
@@ -135,7 +142,8 @@ public class MainForm : Form
         emptyHint.BackColor = Theme.Background;
         emptyHint.Font = new Font("Segoe UI", 11);
         emptyHint.Text = "▶ 시작을 누르면 들리는 말이 여기에 받아 적힙니다.\n\n" +
-                         "듣는 대상은 '프로필'에서 바꿀 수 있고,\n소리가 들어오는지는 '파형'에서 확인할 수 있습니다.";
+                         "듣는 대상은 '프로필'에서 바꿀 수 있고,\n소리가 들어오는지는 '파형'에서 확인할 수 있습니다.\n\n" +
+                         "설정 방법과 문제 해결은 '문서'(F1)를 보세요.";
         list.Controls.Add(emptyHint);
 
         // --- 상태 바 ---
@@ -226,16 +234,22 @@ public class MainForm : Form
         UpdateProfileButton();
         warningBar.Visible = engine.SetupWarning is not null;
         warningLabel.Text = $"⚠  {engine.SetupWarning}";
+        list.Columns[SourceColumn].Width = MultipleSources ? 140 : 0;
         list.Columns[SpeakerColumn].Width = engine.SpeakerRecognition ? 130 : 0;
         FitTextColumn();
     }
 
-    const int SpeakerColumn = 1;
+    const int SourceColumn = 1;
+    const int SpeakerColumn = 2;
+    const int TextColumn = 3;
+
+    bool MultipleSources => engine.AudioSourceCount > 1;
 
     void FitTextColumn()
     {
-        int w = list.ClientSize.Width - list.Columns[0].Width - list.Columns[SpeakerColumn].Width - 4;
-        if (w > 100) list.Columns[2].Width = w;
+        int w = list.ClientSize.Width - list.Columns[0].Width - list.Columns[SourceColumn].Width
+                - list.Columns[SpeakerColumn].Width - 4;
+        if (w > 100) list.Columns[TextColumn].Width = w;
     }
 
     /// <summary>프로필 콤보박스를 profiles/ 목록으로 다시 채우고 지금 쓰는 프로필을 선택한다.
@@ -396,7 +410,15 @@ public class MainForm : Form
             toggleBtn.Enabled = false;
             UpdateToggleButton(running: false, starting: true);
             try { await engine.StartAsync(); UpdateToggleButton(running: true); }
-            catch (Exception ex) { status.Text = $"오류: {ex.Message}"; UpdateToggleButton(running: false); }
+            catch (Exception ex)
+            {
+                // 장치 목록처럼 여러 줄인 오류는 한 줄짜리 상태 표시줄에서 잘리므로 전문은 대화상자로 보여준다.
+                status.Text = $"오류: {ex.Message.Split('\n')[0]}";
+                UpdateToggleButton(running: false);
+                if (MessageBox.Show(this, $"{ex.Message}\n\n문제 해결 문서를 열까요?", "시작할 수 없습니다",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                    DocsForm.Open(this, "troubleshooting");
+            }
             finally { toggleBtn.Enabled = true; }
         }
     }
@@ -432,6 +454,10 @@ public class MainForm : Form
             ForeColor = Theme.SubText,
             UseItemStyleForSubItems = false
         };
+        // 소스는 별명으로 보여주고, 같은 소스는 같은 색으로 칠해 어느 소스의 말인지 한눈에 구분되게 한다.
+        var sourceSub = item.SubItems.Add(engine.Config.GetAudioSourceAlias(recode.source));
+        sourceSub.ForeColor = SpeakerPalette[recode.source % SpeakerPalette.Length];
+        sourceSub.Font = new Font(list.Font, FontStyle.Bold);
         var speakerSub = item.SubItems.Add(hasSpeaker ? recode.speaker : "-");
         speakerSub.ForeColor = hasSpeaker ? SpeakerColor(recode.speaker!) : Theme.SubText;
         speakerSub.Font = new Font(list.Font, FontStyle.Bold);
@@ -452,8 +478,8 @@ public class MainForm : Form
     {
         if (!pendingItems.TryGetValue(id, out var existing)) return;
 
-        existing.SubItems[2].Text = newRecode.text ?? "";
-        existing.SubItems[2].ForeColor = Theme.Text;
+        existing.SubItems[TextColumn].Text = newRecode.text ?? "";
+        existing.SubItems[TextColumn].ForeColor = Theme.Text;
         existing.ToolTipText = newRecode.text;
 
         if (autoScroll.Checked)
@@ -484,23 +510,40 @@ public class MainForm : Form
         else ExportCsv(saveDlg.FileName);
     }
 
+    /// <summary>내보낼 열. 화면과 같이, 소스가 하나뿐이면 소스 열을, 화자를 구분하지 않으면 화자 열을 뺀다.</summary>
+    (bool Sources, bool Speakers) ExportColumns => (MultipleSources, engine.SpeakerRecognition);
+
     void ExportTxt(string path)
     {
-        bool speakers = engine.SpeakerRecognition;
+        var (sources, speakers) = ExportColumns;
         using var w = new StreamWriter(path) { NewLine = "\n" };
         foreach (ListViewItem it in list.Items)
-            w.WriteLine(speakers ? $"{it.SubItems[1].Text}: {it.SubItems[2].Text}" : it.SubItems[2].Text);
+        {
+            string prefix = (sources ? $"[{it.SubItems[SourceColumn].Text}] " : "")
+                          + (speakers ? $"{it.SubItems[SpeakerColumn].Text}: " : "");
+            w.WriteLine(prefix + it.SubItems[TextColumn].Text);
+        }
     }
 
     void ExportCsv(string path)
     {
-        bool speakers = engine.SpeakerRecognition;
+        var (sources, speakers) = ExportColumns;
         using var w = new StreamWriter(path, false, new System.Text.UTF8Encoding(true));
-        w.WriteLine(speakers ? "시간,화자,텍스트" : "시간,텍스트");
+
+        var header = new List<string> { "시간" };
+        if (sources) header.Add("소스");
+        if (speakers) header.Add("화자");
+        header.Add("텍스트");
+        w.WriteLine(string.Join(",", header));
+
         foreach (ListViewItem it in list.Items)
-            w.WriteLine(speakers
-                ? $"{CsvField(it.Text)},{CsvField(it.SubItems[1].Text)},{CsvField(it.SubItems[2].Text)}"
-                : $"{CsvField(it.Text)},{CsvField(it.SubItems[2].Text)}");
+        {
+            var fields = new List<string> { it.Text };
+            if (sources) fields.Add(it.SubItems[SourceColumn].Text);
+            if (speakers) fields.Add(it.SubItems[SpeakerColumn].Text);
+            fields.Add(it.SubItems[TextColumn].Text);
+            w.WriteLine(string.Join(",", fields.Select(CsvField)));
+        }
     }
 
     static string CsvField(string value) =>

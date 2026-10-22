@@ -17,11 +17,13 @@ public interface ITranscriber : IDisposable
     bool IsRunning { get; }
     /// <summary>오디오 소스 중 하나라도 발화자(화자)를 구분해 보내는지. 아니면 UI가 화자 칼럼을 숨긴다.</summary>
     bool SpeakerRecognition { get; }
+    /// <summary>동시에 쓰는 오디오 소스 수. 2개 이상이면 UI가 소스 번호 칼럼을 보여준다.</summary>
+    int AudioSourceCount { get; }
     /// <summary>오디오 소스가 없거나 만들지 못해 시작할 수 없는 이유. 정상이면 null.</summary>
     string? SetupWarning { get; }
 
     ValueTask StartAsync();
     ValueTask StopAsync();
     IEnumerable<KeyValuePair<int, TranscriptRecode>> GetRecodes();
-    void ApplyRuntimeOptions(JsonObject updates);
+    void ApplyRuntimeOptions(int index, JsonObject updates);
 }

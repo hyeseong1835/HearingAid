@@ -18,7 +18,7 @@ namespace HearingAid.Core.Audio;
     Description = "Discord 봇이 대상 사용자가 있는 음성 채널에 따라 들어가, 말하는 사람별로 나눠 받아 적습니다(화자 구분).\n" +
                   "Discord 개발자 포털에서 만든 봇 토큰이 필요하고, 그 봇이 해당 서버에 초대돼 있어야 합니다. " +
                   "PC 소리와 상관없이 동작하므로 Discord를 음소거해 둬도 됩니다.\n" +
-                  "봇 만들기부터 자세한 설정 방법: github.com/Hyeseong1835/HearingAid/blob/main/docs/discord.md")]
+                  "봇 만들기와 필요한 권한은 메인 화면의 '문서'(F1) > 'Discord 음성 채널 받아 적기'에 정리돼 있습니다.")]
 public class NetCordAudioSource : IAudioSource
 {
     /// <summary>SSRC(발신자)별 Opus 디코드 + 48kHz→16kHz 다운샘플 파이프라인.</summary>

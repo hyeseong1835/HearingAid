@@ -91,7 +91,10 @@ public class ModelManagerDialog : Form
         deleteBtn.Click += (s, e) => DeleteSelected();
         defaultBtn.Text = "기본 모델로 지정"; defaultBtn.Width = 140; defaultBtn.Height = 30; defaultBtn.Location = new Point(282, 6);
         defaultBtn.Click += (s, e) => { if (SelectedId is { } id) SetDefault(id); };
-        closeBtn.Text = "닫기"; closeBtn.Width = 80; closeBtn.Height = 30; closeBtn.Location = new Point(428, 6);
+        // 첫 실행에선 이 창을 닫아야 메인 창이 열리므로, "닫기"가 아니라 앱을 시작하는 버튼으로 보이게 한다.
+        closeBtn.Text = firstRun ? "HearingAid 시작 ▶" : "닫기";
+        closeBtn.Width = firstRun ? 170 : 80; closeBtn.Height = 30;
+        closeBtn.Location = new Point(firstRun ? 554 : 428, 6);
         closeBtn.Click += (s, e) => Close();
         buttons.Controls.AddRange([downloadBtn, cancelBtn, deleteBtn, defaultBtn, closeBtn]);
 
@@ -151,6 +154,15 @@ public class ModelManagerDialog : Form
         deleteBtn.Enabled = !busy && !engineRunning && installed;
         defaultBtn.Enabled = !busy && !engineRunning && installed;
         progress.Visible = busy;
+
+        // 첫 실행: 모델이 하나라도 생기면 다운로드 대신 "시작"이 주 버튼이 된다.
+        if (firstRun)
+        {
+            bool ready = ModelStore.ListInstalled().Count > 0;
+            Theme.StyleButton(closeBtn, ready ? Theme.ButtonKind.Primary : Theme.ButtonKind.Normal);
+            Theme.StyleButton(downloadBtn, ready ? Theme.ButtonKind.Normal : Theme.ButtonKind.Primary);
+            if (ready) AcceptButton = closeBtn;
+        }
     }
 
     async Task DownloadSelectedAsync()

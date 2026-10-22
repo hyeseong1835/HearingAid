@@ -112,7 +112,11 @@ public class Config
     [JsonPropertyName("checkForUpdates")]
     public bool CheckForUpdates { get; set; } = true;
 
-    /// <summary>{ "type": "<AudioSourceAttribute 이름>", 생성자 파라미터... } 형태의 flat 객체.</summary>
+    /// <summary>동시에 쓸 오디오 소스 목록. 원소는 { "type": "<AudioSourceAttribute 이름>", 생성자 파라미터... } 형태의 flat 객체.</summary>
+    [JsonPropertyName("audioSources")]
+    public JsonArray? AudioSources { get; set; }
+
+    /// <summary>예전 형식(오디오 소스 하나). audioSources가 없을 때만 읽고, 저장할 때는 audioSources로 옮긴다.</summary>
     [JsonPropertyName("audioSource")]
     public JsonObject? AudioSource { get; set; }
 
@@ -213,13 +217,40 @@ public class Config
 
     static readonly object FileWriteLock = new();
 
-    /// <summary>오디오 소스가 스스로 학습한 설정 값들을, 지금 활성 설정 파일(프로필이 적용
-    /// 중이면 그 프로필, 아니면 base appsettings.json)의 audioSource 객체 안에 병합해 즉시
-    /// 저장한다. 다른 키/다른 설정은 건드리지 않는다. 메모리 상의 this.AudioSource도 함께
-    /// 갱신해 이후 재조회(예: 설정 화면을 다시 열 때)에 최신 값이 보이게 한다.</summary>
-    public void PersistAudioSourceOptions(JsonObject updates)
+    /// <summary>설정 파일(base 또는 프로필) 노드에서 오디오 소스 목록을 읽는다. audioSources 배열이 있으면 그것을,
+    /// 없으면 예전 형식의 audioSource 하나를 목록으로 돌려준다. type이 없는 원소도 그대로 포함한다(편집 화면용).</summary>
+    public static List<JsonObject> ReadAudioSourceList(JsonObject node)
     {
-        if (FilePath is null) return;
+        if (node["audioSources"] is JsonArray arr)
+            return arr.OfType<JsonObject>().ToList();
+        return node["audioSource"] is JsonObject single ? [single] : [];
+    }
+
+    public static string? GetAudioSourceType(JsonObject? source) =>
+        source?["type"] is JsonValue v && v.TryGetValue(out string? s) && !string.IsNullOrWhiteSpace(s) ? s : null;
+
+    /// <summary>이 Config에서 실제로 만들 오디오 소스 목록(type이 있는 것만). 순서가 곧 소스 번호다.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<JsonObject> AudioSourceList
+    {
+        get
+        {
+            IEnumerable<JsonObject> all = AudioSources is not null ? AudioSources.OfType<JsonObject>()
+                : AudioSource is not null ? new[] { AudioSource }
+                : Array.Empty<JsonObject>();
+            return all.Where(s => GetAudioSourceType(s) is not null).ToList();
+        }
+    }
+
+    /// <summary>오디오 소스가 스스로 학습한 설정 값들을, 지금 활성 설정 파일(프로필이 적용 중이면 그 프로필,
+    /// 아니면 base appsettings.json)의 index번째 오디오 소스 객체 안에 병합해 즉시 저장한다. 다른 키/다른 설정은
+    /// 건드리지 않는다. 예전 형식(audioSource)이면 이 김에 audioSources 배열로 옮긴다.
+    /// 그 자리의 종류가 다르면(실행 중에 편집 화면에서 순서를 바꿔 저장한 경우) 엉뚱한 소스에 쓰지 않도록 건너뛴다.</summary>
+    public void PersistAudioSourceOptions(int index, JsonObject updates)
+    {
+        if (FilePath is null || index < 0 || index >= AudioSourceList.Count) return;
+        JsonObject memorySource = AudioSourceList[index];
+        string? type = GetAudioSourceType(memorySource);
 
         string targetPath = EffectiveProfileName is { } name && ProfilesDir is { } dir
             ? Path.Combine(dir, name + ".json")
@@ -231,27 +262,27 @@ public class Config
                 ? (JsonNode.Parse(File.ReadAllText(targetPath)) as JsonObject ?? new JsonObject())
                 : new JsonObject();
 
-            var audioSourceNode = fileNode["audioSource"] as JsonObject;
-            if (audioSourceNode is null)
+            var sources = ReadAudioSourceList(fileNode).Where(s => GetAudioSourceType(s) is not null)
+                .Select(s => s.DeepClone().AsObject()).ToList();
+            if (index < sources.Count
+                && string.Equals(GetAudioSourceType(sources[index]), type, StringComparison.OrdinalIgnoreCase))
             {
-                audioSourceNode = new JsonObject();
-                if (AudioSource?["type"] is { } typeNode) audioSourceNode["type"] = typeNode.DeepClone();
-                fileNode["audioSource"] = audioSourceNode;
-            }
-            foreach (var kv in updates)
-                audioSourceNode[kv.Key] = kv.Value?.DeepClone();
+                foreach (var kv in updates)
+                    sources[index][kv.Key] = kv.Value?.DeepClone();
 
-            File.WriteAllText(targetPath, fileNode.ToJsonString(SerializeOptions));
+                fileNode.Remove("audioSource");
+                fileNode["audioSources"] = new JsonArray(sources.Select(s => (JsonNode)s).ToArray());
+                File.WriteAllText(targetPath, fileNode.ToJsonString(SerializeOptions));
+            }
         }
 
-        AudioSource ??= new JsonObject();
         foreach (var kv in updates)
-            AudioSource[kv.Key] = kv.Value?.DeepClone();
+            memorySource[kv.Key] = kv.Value?.DeepClone();
     }
 
     /// <summary>프로필을 로드하고 그 설정으로 오디오 소스와 TranscriberEngine을 새로 만든다.
-    /// Program.cs의 최초 기동과 ProfileSettingsForm의 프로필 전환이 이 로직을 공유한다.</summary>
-    /// <summary>오디오 소스가 설정되지 않았거나 만들 수 없어도 예외를 던지지 않는다 — 앱이 켜지지 않는 대신,
+    /// Program.cs의 최초 기동과 ProfileSettingsForm의 프로필 전환이 이 로직을 공유한다.
+    /// 오디오 소스가 설정되지 않았거나 만들 수 없어도 예외를 던지지 않는다 — 앱이 켜지지 않는 대신,
     /// 오디오 소스 없이 엔진을 만들고 SetupWarning에 이유를 담아 UI가 사용자에게 설정을 안내하게 한다.</summary>
     public static TranscriberEngine BuildEngine(string baseConfigPath, string profilesDir, string? profileName)
     {
@@ -265,36 +296,42 @@ public class Config
                     ? "사용할 프로필을 고르세요. 프로필마다 무엇을 들을지(오디오 소스)가 정해져 있습니다."
                     : "프로필이 없습니다. '⚙ 편집'에서 프로필을 만들고 오디오 소스를 고르세요.");
 
-        try
+        var created = new List<IAudioSource>();
+        var list = cfg.AudioSourceList;
+        for (int i = 0; i < list.Count; i++)
         {
-            return new TranscriberEngine(cfg, [cfg.CreateConfiguredAudioSources()]);
+            try
+            {
+                created.Add(cfg.CreateAudioSource(new AudioSourceSpec(GetAudioSourceType(list[i])!, list[i])));
+            }
+            catch (Exception ex)
+            {
+                foreach (var s in created) s.Dispose();
+                // 리플렉션 생성자 호출 실패는 TargetInvocationException으로 감싸져 오므로 안쪽 메시지를 보여준다.
+                string reason = (ex as TargetInvocationException)?.InnerException?.Message ?? ex.Message;
+                string which = list.Count > 1 ? $" {i + 1}({GetAudioSourceAlias(list[i])})" : "";
+                return new TranscriberEngine(cfg, [], $"오디오 소스{which}를 준비하지 못했습니다: {reason}");
+            }
         }
-        catch (Exception ex)
-        {
-            // 리플렉션 생성자 호출 실패는 TargetInvocationException으로 감싸져 오므로 안쪽 메시지를 보여준다.
-            string reason = (ex as TargetInvocationException)?.InnerException?.Message ?? ex.Message;
-            return new TranscriberEngine(cfg, [], $"오디오 소스를 준비하지 못했습니다: {reason}");
-        }
+        return new TranscriberEngine(cfg, created.ToArray());
     }
 
-    /// <summary>audioSource.type이 지정돼 있는지.</summary>
+    /// <summary>오디오 소스가 하나 이상 지정돼 있는지.</summary>
     [JsonIgnore]
-    public bool HasAudioSource =>
-        AudioSource is not null && AudioSource.TryGetPropertyValue("type", out var t)
-        && t is JsonValue v && v.TryGetValue(out string? type) && !string.IsNullOrWhiteSpace(type);
+    public bool HasAudioSource => AudioSourceList.Count > 0;
 
-    /// <summary>this.AudioSource에 담긴 type/파라미터로 실제 IAudioSource 인스턴스를 만든다.</summary>
-    public IAudioSource CreateConfiguredAudioSources()
-    {
-        if (AudioSource is null)
-            throw new InvalidOperationException("audioSource 설정이 없습니다.");
+    /// <summary>오디오 소스 객체에서 별명을 저장하는 키. 생성자 매개변수가 아니므로 소스를 만들 때는 무시된다.</summary>
+    public const string AliasKey = "alias";
 
-        string? type = AudioSource.TryGetPropertyValue("type", out var t) ? t?.GetValue<string>() : null;
-        if (string.IsNullOrEmpty(type))
-            throw new InvalidOperationException("audioSource.type이 없습니다.");
+    /// <summary>오디오 소스의 별명. 지정하지 않았으면 종류의 시스템 이름(예: WasapiLoopback)을 쓴다.</summary>
+    public static string GetAudioSourceAlias(JsonObject? source) =>
+        source?[AliasKey] is JsonValue v && v.TryGetValue(out string? alias) && !string.IsNullOrWhiteSpace(alias)
+            ? alias.Trim()
+            : GetAudioSourceType(source) ?? "?";
 
-        return CreateAudioSource(new AudioSourceSpec(type, AudioSource));
-    }
+    /// <summary>index번째 오디오 소스의 별명. 목록의 소스 칼럼, 상태 표시줄, 내보내기에 쓴다.</summary>
+    public string GetAudioSourceAlias(int index) =>
+        index >= 0 && index < AudioSourceList.Count ? GetAudioSourceAlias(AudioSourceList[index]) : $"{index + 1}";
 
     public IAudioSource CreateAudioSource(AudioSourceSpec spec)
     {
@@ -323,7 +360,7 @@ public class Config
                 p.Name!, p.ParameterType,
                 p.GetCustomAttribute<DescriptionAttribute>()?.Description ?? "",
                 GetEffectiveDefault(p),
-                p.GetCustomAttribute<RunningProcessPickerAttribute>() is not null,
+                p.GetCustomAttribute<SuggestionPickerAttribute>(),
                 p.GetCustomAttribute<PasswordPropertyTextAttribute>()?.Password == true);
             return new AudioSourceSettingValue(settingSpec, ResolveConstructorArg(p, spec.Options));
         }).ToList();

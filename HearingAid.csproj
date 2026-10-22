@@ -24,10 +24,14 @@
     <None Include="profiles\**\*.json" Condition="Exists('profiles')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- 앱의 '문서' 창에 보일 설명서. GitHub에서 읽는 파일과 같은 파일을 실행 파일에 넣는다. -->
+    <EmbeddedResource Include="docs\app\*.md" LogicalName="docs/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="docs\discord.md" LogicalName="docs/discord.md" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="NAudio" Version="3.0.1" />
+    <PackageReference Include="Markdig" Version="0.45.0" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.20.1" />
     <PackageReference Include="Whisper.net" Version="1.8.1" />
     <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.8.1" />

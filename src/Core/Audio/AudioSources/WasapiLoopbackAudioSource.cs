@@ -45,7 +45,7 @@ public class WasapiLoopbackAudioSource : IAudioSource
     Thread? pumpThread;
 
     public WasapiLoopbackAudioSource(
-        [Description("출력 장치 이름에 포함되어야 하는 문자열 (부분 일치, 비워두면 기본 출력 장치 사용)")]
+        [OutputDevicePicker, Description("캡처할 출력 장치. 목록에서 고르거나 이름 일부를 적음 (부분 일치). 비워두면 Windows 기본 출력 장치 사용")]
         string? deviceKeyword = null,
         [Description("입력 증폭 배율 (1.0 = 원본, 2.0 = 2배 증폭 등. 클리핑 방지를 위해 [-1, 1] 범위로 clamp됨)")]
         float gain = 1.0f,
@@ -177,11 +177,17 @@ public class WasapiLoopbackAudioSource : IAudioSource
         if (string.IsNullOrWhiteSpace(keyword))
             return enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
 
+        var names = new List<string>();
         foreach (var dev in enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
+        {
             if (dev.FriendlyName.Contains(keyword, StringComparison.OrdinalIgnoreCase))
                 return dev;
+            names.Add(dev.FriendlyName);
+            dev.Dispose();
+        }
 
-        throw new Exception($"출력 장치를 찾을 수 없습니다: '{keyword}'");
+        throw new Exception($"출력 장치 '{keyword}'를 찾을 수 없습니다. 프로필 편집에서 장치를 다시 고르세요.\n\n현재 출력 장치:"
+            + string.Concat(names.Select(n => $"\n  • {n}")));
     }
 
     public void Dispose() => StopAsync();

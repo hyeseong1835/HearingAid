@@ -9,7 +9,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2B%20x64-1E9BFA?logo=windows)](#-설치)
 [![License](https://img.shields.io/github/license/Hyeseong1835/HearingAid)](LICENSE)
 
-[설치](#-설치) · [사용법](#-사용법) · [Discord 설정](docs/discord.md) · [문제 해결](#-문제-해결) · [개발](#-개발)
+[설치](#-설치) · [사용법](#-사용법) · [Discord 봇 설정](#-discord-봇-설정) · [문서](docs/app/) · [개발](#-개발)
 
 </div>
 
@@ -34,7 +34,9 @@
   | PC 소리 전체 | 스피커·헤드폰으로 나오는 모든 소리 |
   | 특정 프로그램 소리만 | 고른 프로그램(chrome, Zoom 등)의 소리만. 알림음이 섞이지 않음 |
   | 마이크 등 입력 장치 | 마이크, 또는 VB-CABLE 같은 가상 오디오 케이블 |
-  | Discord 음성 채널 | 봇이 음성 채널에 들어가 **말하는 사람별로** 받아 적음 → [설정 방법](docs/discord.md) |
+  | Discord 음성 채널 | 사용자가 봇이 참가한 서버에 있다면 자동으로 음성 채널에 들어가 **말하는 사람별로** 받아 적음 → [설정 방법](docs/discord.md) |
+
+  한 프로필에 여러 소스를 넣어 **동시에** 받아 적을 수도 있습니다(예: 회의 앱 소리 + 마이크). 소스마다 별명을 붙여 목록과 내보내기에서 구분할 수 있습니다.
 
 - **🗂️ 프로필**
 
@@ -72,17 +74,45 @@
 
   받아 적은 내용을 TXT 또는 CSV로 저장합니다.
 
+- **📖 내장 문서**
+
+  설정 방법과 문제 해결을 앱 안의 **문서**(F1)에서 바로 볼 수 있습니다. 시작에 실패하면 문제 해결 문서로 안내합니다.
+
 ## 📦 설치
 
 1. [Releases](https://github.com/Hyeseong1835/HearingAid/releases/latest)에서 `HearingAid-<버전>-win-x64.zip`을 받습니다.
 2. 원하는 폴더에 압축을 풀고 `HearingAid.exe`를 실행합니다.
 3. 처음 실행하면 음성 인식 모델을 고르는 창이 뜹니다. 잘 모르겠다면 **추천 모델 `large-v3-turbo`** (약 1.6GB)를 받으세요.
 
-> [!NOTE]
-> 코드 서명이 없어 처음 실행할 때 "Windows의 PC 보호" 창이 뜰 수 있습니다. **추가 정보 → 실행**을 누르세요.
-
 > [!TIP]
 > 설정을 앱 폴더에 저장하므로 `C:\Program Files`처럼 쓰기가 제한된 폴더는 피하세요. 바탕 화면이나 문서 폴더면 충분합니다.
+
+<details>
+<summary><strong>설치 문제 해결</strong></summary>
+<br/>
+
+**"Windows의 PC 보호" 창이 떠요**
+
+코드 서명이 없는 앱이라 처음 실행할 때 SmartScreen 경고가 뜹니다. **추가 정보 → 실행**을 누르세요.
+압축을 풀기 전에 zip 파일을 **우클릭 → 속성 → "차단 해제" 체크 → 확인**하면 이 경고가 뜨지 않습니다.
+
+**실행해도 아무 창도 뜨지 않아요**
+
+64비트 Windows 10 이상인지 확인하세요. 백신 프로그램이 처음 보는 실행 파일을 격리했을 수도 있으니 백신의 검역소(격리) 목록도 확인하세요.
+
+**설정이 저장되지 않거나 업데이트가 실패해요**
+
+앱 폴더에 쓰기 권한이 없는 경우입니다. `C:\Program Files` 등에 풀었다면 바탕 화면이나 문서 폴더로 옮기세요.
+
+**첫 실행 화면에서 모델 다운로드가 안 돼요**
+
+모델은 `huggingface.co`에서 받습니다. 회사·학교 네트워크에서 막혀 있다면 다른 곳에서 `ggml-large-v3-turbo.bin`을 받아 앱 폴더의 `models\`에 넣고 실행하세요. 모델 목록은 [whisper.cpp 모델 저장소](https://huggingface.co/ggerganov/whisper.cpp/tree/main)에 있습니다.
+
+**이전 버전에서 옮겨 오고 싶어요**
+
+새 폴더에 푼 뒤 예전 폴더의 `appsettings.json`, `profiles\`, `models\`를 복사해 넣으면 설정과 모델이 그대로 이어집니다.
+
+</details>
 
 <details>
 <summary><strong>시스템 요구 사항</strong></summary>
@@ -123,12 +153,13 @@
 | **모델** | 모델 다운로드·삭제, 기본 모델 지정 |
 | **파형** | 들어오는 소리 크기를 실시간으로 표시. 받아 적기가 안 될 때 확인용 |
 | **내보내기** | TXT / CSV로 저장 |
+| **문서** | 설정 방법과 문제 해결 (F1) |
 | **업데이트** | 새 버전 확인 및 설치 |
 
 ### 프로필 만들기
 
-1. **⚙ 편집 → + 추가**로 프로필을 만듭니다.
-2. 맨 위 **오디오 소스**에서 무엇을 들을지 고릅니다. 각 설정 아래에 설명이 표시됩니다.
+1. **⚙ 편집 → + 새 프로필**로 프로필을 만듭니다.
+2. **오디오 소스** 섹션에서 무엇을 들을지 고릅니다. 각 설정 아래에 설명이 표시됩니다.
 3. 필요하면 **모델 재정의**나 **화자별 모델**을 지정합니다.
 4. **저장 → 이 프로필 사용**을 누른 뒤 메인 화면에서 **시작**합니다.
    이후에는 메인 화면의 프로필 목록에서 바로 바꿀 수 있습니다.
@@ -136,48 +167,67 @@
 처음 실행하면 프로필이 없으므로, 메인 화면의 안내에 따라 프로필을 만들고 오디오 소스를 고르세요.
 오디오 소스가 정해지지 않은 프로필은 목록에 ⚠ 표시가 붙고 시작할 수 없습니다.
 
-Discord 음성 채널을 받아 적으려면 봇을 먼저 만들어야 합니다. [Discord 설정 가이드](docs/discord.md)를 따라 하세요.
+### 문서
 
-## 🔧 문제 해결
+각 설정의 뜻, 상황별 조정 방법, 문제 해결은 앱의 **문서**(F1)에 정리돼 있습니다. 같은 내용을 GitHub에서도 볼 수 있습니다.
 
-<details>
-<summary><strong>소리가 나는데 아무것도 받아 적지 않아요</strong></summary>
-<br/>
+| 문서 | 내용 |
+|---|---|
+| [시작하기](docs/app/getting-started.md) | 첫 설정, 화면 구성, 업데이트, 설정 파일 |
+| [오디오 소스 설정](docs/app/audio-sources.md) | 오디오 소스별 설정, 자동 증폭, 말소리 감지 조정 |
+| [모델](docs/app/models.md) | 모델 고르기, 프로필별·화자별 모델, GPU |
+| [Discord 음성 채널 받아 적기](docs/discord.md) | 봇 만들기부터 사용까지 |
+| [문제 해결](docs/app/troubleshooting.md) | 시작 오류, 받아 적지 않음, 엉뚱한 문장, 느림 등 |
 
-1. **파형** 창을 열어 소리가 들어오는지 확인하세요.
-2. 파형이 일자라면 다른 오디오 소스를 고르세요. 예를 들어 헤드폰이 아닌 다른 출력 장치로 소리가 나가고 있을 수 있습니다.
-3. 파형이 아주 작다면 프로필의 `autoGain`(자동 증폭)이 켜져 있는지 확인하세요. Windows 볼륨 믹서에서 해당 앱 볼륨을 올려도 됩니다.
-4. 파형은 충분한데 받아 적지 않는다면 `vadThreshold`를 낮춰 보세요(예: 0.5).
+## 🤖 Discord 봇 설정
 
-</details>
+Discord 음성 채널을 받아 적으려면 내 봇을 하나 만들어 서버에 초대해야 합니다. 봇은 음성 채널에 들어가 **듣기만** 하므로 권한은 최소한만 줍니다.
+단계별 화면 안내는 [Discord 가이드](docs/discord.md)를 보세요.
 
-<details>
-<summary><strong>말하지 않았는데 엉뚱한 문장이 나와요</strong></summary>
-<br/>
+**1. 봇 만들기** — [Discord 개발자 포털](https://discord.com/developers/applications)에서 **New Application**을 만들고, **Bot** 메뉴에서 **Reset Token**으로 토큰을 받습니다.
 
-조용한 곳의 마이크처럼 잡음이 있으면 자동 증폭이 잡음까지 키울 수 있습니다.
-해당 프로필에서 `autoGain`을 끄거나 `vadThreshold`를 올려 보세요(예: 0.8).
+**2. Bot 메뉴 설정**
 
-</details>
+| 항목 | 설정 | 이유 |
+|---|---|---|
+| Public Bot | 끔 (권장) | 다른 사람이 내 봇을 자기 서버에 초대하지 못하게 |
+| Requires OAuth2 Code Grant | 끔 | 켜면 일반 초대 링크로 초대할 수 없음 |
+| Presence Intent | 끔 | 쓰지 않음 |
+| Server Members Intent | 끔 | 쓰지 않음. 화자 이름은 음성 채널 정보에서 가져옴 |
+| Message Content Intent | 끔 | 메시지를 읽지 않음 |
 
-<details>
-<summary><strong>받아 적기가 너무 느려요</strong></summary>
-<br/>
+HearingAid가 쓰는 Gateway 인텐트는 `Guilds`, `GuildVoiceStates` 두 가지이고, 둘 다 특권 인텐트가 아니라 따로 켤 필요가 없습니다.
 
-GPU가 없으면 큰 모델은 느립니다. **모델** 화면에서 `small`이나 이름에 `q5`가 붙은 양자화 모델을 받아 기본 모델로 지정하세요.
+**3. 초대 링크 권한** — **OAuth2 → URL Generator**에서 아래만 체크합니다.
 
-</details>
+| 구분 | 권한 | 필요 여부 | 이유 |
+|---|---|---|---|
+| Scopes | `bot` | ✅ 필요 | 봇으로 서버에 참가 |
+| Scopes | `applications.commands` 등 | ❌ | 슬래시 명령을 쓰지 않음 |
+| Bot Permissions | `View Channels` | ✅ 필요 | 음성 채널과 대상 사용자의 위치를 봄 |
+| Bot Permissions | `Connect` | ✅ 필요 | 음성 채널에 들어감 |
+| Bot Permissions | `Speak`, `Use Voice Activity` | ❌ | 말하지 않음 |
+| Bot Permissions | `Send Messages`, `Read Message History` | ❌ | 채팅을 쓰거나 읽지 않음 |
+| Bot Permissions | `Administrator`, `Move Members`, `Mute/Deafen Members` | ❌ | 주지 마세요 |
 
-<details>
-<summary><strong>"특정 프로그램 소리만" 목록에 프로그램이 없어요</strong></summary>
-<br/>
+권한 정수는 `1049600`입니다. Application ID만 바꿔 아래 주소로 바로 초대할 수도 있습니다.
 
-프로그램이 실행 중이고 **한 번이라도 소리를 낸** 상태여야 목록에 나타납니다. 영상을 잠깐 재생한 뒤 다시 열어 보세요.
+```
+https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot&permissions=1049600
+```
 
-</details>
+**4. 서버에서 확인**
+
+- 봇을 초대하려면 그 서버의 **서버 관리하기** 권한이 필요합니다. 내 서버가 아니면 관리자에게 링크를 전달하세요.
+- 음성 채널이나 카테고리에서 `@everyone`의 **채널 보기**·**연결**을 막아 두었다면, 채널 권한에 봇(또는 봇 역할)을 추가해 두 권한을 허용하세요.
+- 봇이 **서버 헤드셋 음소거(Server Deafen)** 상태면 소리를 받을 수 없습니다.
+- 인원 제한이 꽉 찬 채널에는 들어갈 수 없습니다.
+
+**5. HearingAid 설정** — 프로필의 오디오 소스를 **Discord 음성 채널**로 고르고, `token`에 봇 토큰, `targetUserId`에 봇이 따라다닐 사용자(보통 나)의 ID를 넣습니다.
+사용자 ID는 Discord **설정 → 고급 → 개발자 모드**를 켠 뒤 내 프로필을 우클릭 → **사용자 ID 복사**로 얻습니다.
 
 > [!WARNING]
-> Discord 프로필의 봇 토큰은 `profiles\` 폴더에 평문으로 저장됩니다. 이 폴더를 다른 사람과 공유하지 마세요.
+> 봇 토큰은 봇의 비밀번호입니다. 토큰은 앱 폴더의 `profiles\` 폴더에 평문으로 저장되므로 이 폴더를 다른 사람과 공유하지 마세요. 유출이 의심되면 개발자 포털에서 즉시 **Reset Token**을 누르세요.
 
 ## 🛠️ 개발
 
@@ -223,8 +273,9 @@ src/
       AudioSources/            WASAPI 루프백, 프로세스 루프백, WaveIn, Discord(NetCord)
     Stt/                       Whisper 모델 래퍼, 모델 카탈로그·다운로드(ModelStore)
     Update/                    GitHub Releases 확인·다운로드·파일 교체
-  UI/WinForms/                 메인 창, 프로필 설정, 모델 관리, 업데이트, 파형
-docs/                          사용 설명서
+  UI/WinForms/                 메인 창, 프로필 설정, 모델 관리, 업데이트, 파형, 문서(Markdig → WebBrowser)
+docs/app/                      앱 '문서' 창에 내장되는 설명서 (EmbeddedResource)
+docs/discord.md                Discord 봇 가이드 (앱에도 내장)
 scripts/publish.ps1            릴리스 zip 생성 / GitHub 릴리스
 ```
 
