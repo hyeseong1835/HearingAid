@@ -38,10 +38,12 @@ public class MainForm : Form
     void BuildUi()
     {
         Text = $"HearingAid v{AppUpdater.CurrentVersion.ToString(3)}";
-        Width = 1080; Height = 640;
-        MinimumSize = new Size(1000, 420); // 이보다 좁으면 왼쪽(시작·프로필)과 오른쪽 버튼 묶음이 겹친다
+        Width = 1160; Height = 640;
+        MinimumSize = new Size(1080, 420); // 이보다 좁으면 왼쪽(시작·프로필)과 오른쪽 버튼 묶음이 겹친다
         StartPosition = FormStartPosition.CenterScreen;
         Font = Theme.Font;
+        KeyPreview = true;
+        KeyDown += (s, e) => { if (e.KeyCode == Keys.F1) DocsForm.Open(this); };
 
         // --- 상단 도구 모음: 왼쪽은 캡처 제어, 오른쪽은 보조 기능 ---
         var toolbar = new Panel { Dock = DockStyle.Top, Height = 56, BackColor = Theme.Surface, Padding = new Padding(10, 10, 10, 0) };
@@ -75,6 +77,7 @@ public class MainForm : Form
             ToolButton("내보내기", (s, e) => Export()),
             ToolButton("지우기", (s, e) => { list.Items.Clear(); pendingItems.Clear(); UpdateEmptyHint(); }),
             ToolButton("새로고침", (s, e) => RefreshRecodes()),
+            ToolButton("문서", (s, e) => DocsForm.Open(this)),
         ]);
         updateBtn.Size = new Size(124, 36);
         updateBtn.Margin = new Padding(6, 0, 0, 0);
@@ -135,7 +138,8 @@ public class MainForm : Form
         emptyHint.BackColor = Theme.Background;
         emptyHint.Font = new Font("Segoe UI", 11);
         emptyHint.Text = "▶ 시작을 누르면 들리는 말이 여기에 받아 적힙니다.\n\n" +
-                         "듣는 대상은 '프로필'에서 바꿀 수 있고,\n소리가 들어오는지는 '파형'에서 확인할 수 있습니다.";
+                         "듣는 대상은 '프로필'에서 바꿀 수 있고,\n소리가 들어오는지는 '파형'에서 확인할 수 있습니다.\n\n" +
+                         "설정 방법과 문제 해결은 '문서'(F1)를 보세요.";
         list.Controls.Add(emptyHint);
 
         // --- 상태 바 ---
@@ -401,7 +405,9 @@ public class MainForm : Form
                 // 장치 목록처럼 여러 줄인 오류는 한 줄짜리 상태 표시줄에서 잘리므로 전문은 대화상자로 보여준다.
                 status.Text = $"오류: {ex.Message.Split('\n')[0]}";
                 UpdateToggleButton(running: false);
-                MessageBox.Show(this, ex.Message, "시작할 수 없습니다", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                if (MessageBox.Show(this, $"{ex.Message}\n\n문제 해결 문서를 열까요?", "시작할 수 없습니다",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                    DocsForm.Open(this, "troubleshooting");
             }
             finally { toggleBtn.Enabled = true; }
         }
