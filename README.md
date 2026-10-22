@@ -181,53 +181,20 @@
 
 ## 🤖 Discord 봇 설정
 
-Discord 음성 채널을 받아 적으려면 내 봇을 하나 만들어 서버에 초대해야 합니다. 봇은 음성 채널에 들어가 **듣기만** 하므로 권한은 최소한만 줍니다.
-단계별 화면 안내는 [Discord 가이드](docs/discord.md)를 보세요.
+Discord 음성 채널을 받아 적으려면 내 봇을 하나 만들어 서버에 초대합니다. 처음 한 번, 10분 정도 걸립니다.
+화면을 따라 하는 단계별 안내는 **[Discord 가이드](docs/discord.md)** 를 보세요.
 
-**1. 봇 만들기** — [Discord 개발자 포털](https://discord.com/developers/applications)에서 **New Application**을 만들고, **Bot** 메뉴에서 **Reset Token**으로 토큰을 받습니다.
+1. [Discord 개발자 포털](https://discord.com/developers/applications)에서 **New Application**을 만듭니다.
+2. **Bot** 메뉴에서 **Reset Token**으로 토큰을 복사합니다.
+3. **OAuth2 → OAuth2 URL Generator**에서 Scopes의 **`bot`**, Bot Permissions의 **View Channels**와 **Connect**를 체크하고 링크를 복사합니다.
+4. 그 링크로 봇을 서버에 초대합니다.
+5. Discord **설정 → 고급 → 개발자 모드**를 켜고, 내 프로필 우클릭 → **사용자 ID 복사**.
+6. HearingAid 프로필의 오디오 소스를 **Discord 음성 채널**로 고르고 `token`과 `targetUserId`를 넣습니다.
 
-**2. Bot 메뉴 설정**
-
-| 항목 | 설정 | 이유 |
-|---|---|---|
-| Public Bot | 끔 (권장) | 다른 사람이 내 봇을 자기 서버에 초대하지 못하게 |
-| Requires OAuth2 Code Grant | 끔 | 켜면 일반 초대 링크로 초대할 수 없음 |
-| Presence Intent | 끔 | 쓰지 않음 |
-| Server Members Intent | 끔 | 쓰지 않음. 화자 이름은 음성 채널 정보에서 가져옴 |
-| Message Content Intent | 끔 | 메시지를 읽지 않음 |
-
-HearingAid가 쓰는 Gateway 인텐트는 `Guilds`, `GuildVoiceStates` 두 가지이고, 둘 다 특권 인텐트가 아니라 따로 켤 필요가 없습니다.
-
-**3. 초대 링크 권한** — **OAuth2 → URL Generator**에서 아래만 체크합니다.
-
-| 구분 | 권한 | 필요 여부 | 이유 |
-|---|---|---|---|
-| Scopes | `bot` | ✅ 필요 | 봇으로 서버에 참가 |
-| Scopes | `applications.commands` 등 | ❌ | 슬래시 명령을 쓰지 않음 |
-| Bot Permissions | `View Channels` | ✅ 필요 | 음성 채널과 대상 사용자의 위치를 봄 |
-| Bot Permissions | `Connect` | ✅ 필요 | 음성 채널에 들어감 |
-| Bot Permissions | `Speak`, `Use Voice Activity` | ❌ | 말하지 않음 |
-| Bot Permissions | `Send Messages`, `Read Message History` | ❌ | 채팅을 쓰거나 읽지 않음 |
-| Bot Permissions | `Administrator`, `Move Members`, `Mute/Deafen Members` | ❌ | 주지 마세요 |
-
-권한 정수는 `1049600`입니다. Application ID만 바꿔 아래 주소로 바로 초대할 수도 있습니다.
-
-```
-https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot&permissions=1049600
-```
-
-**4. 서버에서 확인**
-
-- 봇을 초대하려면 그 서버의 **서버 관리하기** 권한이 필요합니다. 내 서버가 아니면 관리자에게 링크를 전달하세요.
-- 음성 채널이나 카테고리에서 `@everyone`의 **채널 보기**·**연결**을 막아 두었다면, 채널 권한에 봇(또는 봇 역할)을 추가해 두 권한을 허용하세요.
-- 봇이 **서버 헤드셋 음소거(Server Deafen)** 상태면 소리를 받을 수 없습니다.
-- 인원 제한이 꽉 찬 채널에는 들어갈 수 없습니다.
-
-**5. HearingAid 설정** — 프로필의 오디오 소스를 **Discord 음성 채널**로 고르고, `token`에 봇 토큰, `targetUserId`에 봇이 따라다닐 사용자(보통 나)의 ID를 넣습니다.
-사용자 ID는 Discord **설정 → 고급 → 개발자 모드**를 켠 뒤 내 프로필을 우클릭 → **사용자 ID 복사**로 얻습니다.
+권한이 필요한 이유, 인텐트, 설정 항목은 [Discord 상세 정보](docs/discord-details.md)에 정리했습니다.
 
 > [!WARNING]
-> 봇 토큰은 봇의 비밀번호입니다. 토큰은 앱 폴더의 `profiles\` 폴더에 평문으로 저장되므로 이 폴더를 다른 사람과 공유하지 마세요. 유출이 의심되면 개발자 포털에서 즉시 **Reset Token**을 누르세요.
+> 봇 토큰은 봇의 비밀번호입니다. 앱 폴더의 `profiles\` 폴더에 평문으로 저장되므로 이 폴더를 다른 사람과 공유하지 마세요.
 
 ## 🛠️ 개발
 
