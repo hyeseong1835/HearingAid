@@ -1,10 +1,13 @@
 ﻿# 릴리스용 zip을 만든다. 모델은 넣지 않는다 — 앱이 첫 실행 때 모델 다운로드 화면을 띄운다.
 #   .\scripts\publish.ps1            → release\HearingAid-<버전>-win-x64.zip 생성
 #   .\scripts\publish.ps1 -Publish   → 위 zip으로 GitHub 릴리스 v<버전> 생성 (gh CLI 로그인 필요)
+#   .\scripts\publish.ps1 -BuildNumber 45 → 개발 빌드 HearingAid-<버전>.45-win-x64.zip (CI의 dev-build 워크플로가 씀)
 # 버전은 HearingAid.csproj의 <Version>을 따른다. 새 릴리스 전에 그 값을 올릴 것.
 # 앱의 업데이트 확인은 태그 v<버전>과 "HearingAid-*-win-x64.zip" 자산 이름에 의존한다.
+# 개발 빌드는 버전 4번째 자리에 빌드 번호를 붙여, 같은 정식 버전보다는 새롭고 다음 정식 버전보다는 오래된 것으로 비교된다.
 param(
-    [switch]$Publish
+    [switch]$Publish,
+    [int]$BuildNumber = 0
 )
 
 $Configuration = "Release"
@@ -20,11 +23,15 @@ Set-Location $root
 $Version = ($csproj.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version
 if (-not $Version) { throw "HearingAid.csproj에 <Version>이 없습니다." }
 $Tag = "v$Version"
+if ($BuildNumber -gt 0) {
+    if ($Publish) { throw "-BuildNumber(개발 빌드)와 -Publish(정식 릴리스)는 함께 쓸 수 없습니다." }
+    $Version = "$Version.$BuildNumber"
+}
 Write-Host "버전 $Version 빌드"
 
 if (Test-Path $OutDir) { Remove-Item $OutDir -Recurse -Force }
 
-dotnet publish HearingAid.csproj -c $Configuration -r $Runtime --self-contained true -p:DebugType=none -o $OutDir
+dotnet publish HearingAid.csproj -c $Configuration -r $Runtime --self-contained true -p:DebugType=none "-p:Version=$Version" -o $OutDir
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
 
 # 배포 폴더에 필수 파일이 다 있는지 확인 — 잘못된 zip을 만들기 전에 여기서 실패시킨다.
