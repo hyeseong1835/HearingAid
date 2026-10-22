@@ -4,36 +4,35 @@ using HearingAid.Core.Update;
 
 namespace HearingAid;
 
-/// <summary>프로필과 상관없는 앱 전체 설정(appsettings.json). 지금은 업데이트 관련 설정만 있다.</summary>
-public class AppSettingsDialog : Form
+/// <summary>설정 창의 '업데이트' 페이지(appsettings.json). VSCode 설정처럼 바꾸는 즉시 저장한다.</summary>
+public class UpdateSettingsPage : UserControl
 {
     readonly string baseConfigPath;
+    readonly bool initialLatest;
+    bool loading = true;
 
     readonly CheckBox checkOnStart = new();
     readonly RadioButton stableRadio = new();
     readonly RadioButton latestRadio = new();
 
-    /// <summary>업데이트 채널을 바꿨는지. MainForm이 새 채널로 다시 확인하는 데 쓴다.</summary>
-    public bool ChannelChanged { get; private set; }
+    /// <summary>창을 연 뒤 업데이트 채널이 바뀌었는지. MainForm이 새 채널로 다시 확인하는 데 쓴다.</summary>
+    public bool ChannelChanged => latestRadio.Checked != initialLatest;
 
-    public AppSettingsDialog(string baseConfigPath)
+    public UpdateSettingsPage(string baseConfigPath)
     {
         this.baseConfigPath = baseConfigPath;
         BuildUi();
-        Theme.Apply(this);
 
         Config cfg = Config.LoadBase(baseConfigPath);
+        initialLatest = cfg.IncludeDevBuilds;
         checkOnStart.Checked = cfg.CheckForUpdates;
-        (cfg.IncludeDevBuilds ? latestRadio : stableRadio).Checked = true;
+        (initialLatest ? latestRadio : stableRadio).Checked = true;
+        loading = false;
     }
 
     void BuildUi()
     {
-        Text = "설정";
-        Width = 560; Height = 440;
-        StartPosition = FormStartPosition.CenterParent;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false; MinimizeBox = false;
+        Dock = DockStyle.Fill;
         Font = Theme.Font;
 
         var content = new FlowLayoutPanel
@@ -52,6 +51,7 @@ public class AppSettingsDialog : Form
         checkOnStart.Text = "시작할 때 새 버전 확인";
         checkOnStart.AutoSize = true;
         checkOnStart.Margin = new Padding(0, 0, 0, 16);
+        checkOnStart.CheckedChanged += (s, e) => Save();
 
         var channelLabel = new Label { Text = "업데이트 채널", AutoSize = true, Font = new Font(Theme.Font, FontStyle.Bold), Margin = new Padding(0, 0, 0, 6) };
 
@@ -61,6 +61,7 @@ public class AppSettingsDialog : Form
         {
             r.AutoSize = true;
             r.Margin = new Padding(0, 4, 0, 0);
+            r.CheckedChanged += (s, e) => { if (((RadioButton)s!).Checked) Save(); };
         }
 
         content.Controls.AddRange([
@@ -69,35 +70,22 @@ public class AppSettingsDialog : Form
             latestRadio, Hint("기능이 main에 합쳐질 때마다 자동으로 만들어지는 버전까지 받습니다. " +
                               "새 기능과 수정을 먼저 쓸 수 있지만, 아직 충분히 확인되지 않아 문제가 있을 수 있습니다."),
             Hint("개발 버전을 쓰다가 안정 릴리스로 돌아가면, 지금 버전보다 새로운 정식 릴리스가 나올 때 업데이트됩니다.", top: 12),
+            Hint("바꾸는 즉시 저장됩니다.", top: 12),
         ]);
-
-        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 52, BackColor = Theme.Surface };
-        var saveBtn = new Button { Text = "저장", Size = new Size(90, 32), Location = new Point(16, 10) };
-        saveBtn.Click += (s, e) => { Save(); DialogResult = DialogResult.OK; Close(); };
-        var cancelBtn = new Button { Text = "취소", Size = new Size(80, 32), Location = new Point(112, 10) };
-        cancelBtn.Click += (s, e) => Close();
-        bottom.Controls.AddRange([saveBtn, cancelBtn]);
-        Theme.StyleButton(saveBtn, Theme.ButtonKind.Primary);
-        AcceptButton = saveBtn;
-        CancelButton = cancelBtn;
-
         Controls.Add(content);
-        Controls.Add(new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = Theme.Border });
-        Controls.Add(bottom);
     }
 
     static Label Hint(string text, int top = 0) => new()
     {
-        Text = text, AutoSize = true, MaximumSize = new Size(480, 0), ForeColor = Theme.SubText,
+        Text = text, AutoSize = true, MaximumSize = new Size(560, 0), ForeColor = Theme.SubText,
         Margin = new Padding(20, top, 0, 6),
     };
 
     void Save()
     {
-        bool wasLatest = Config.LoadBase(baseConfigPath).IncludeDevBuilds;
+        if (loading) return;
         Config.SetBaseValue(baseConfigPath, "checkForUpdates", JsonValue.Create(checkOnStart.Checked));
         // 기본값(안정)은 파일에 적지 않는다.
         Config.SetBaseValue(baseConfigPath, "updateChannel", latestRadio.Checked ? JsonValue.Create(Config.LatestChannel) : null);
-        ChannelChanged = wasLatest != latestRadio.Checked;
     }
 }

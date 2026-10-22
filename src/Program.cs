@@ -27,7 +27,7 @@ static class Program
         // 시작 버튼을 누르면 엔진이 "모델 없음"을 안내한다.
         if (ModelStore.ListInstalled().Count == 0)
         {
-            using var dlg = new ModelManagerDialog(baseConfigPath, engineRunning: false, firstRun: true);
+            using var dlg = new ModelManagerDialog(baseConfigPath);
             dlg.ShowDialog();
         }
 
