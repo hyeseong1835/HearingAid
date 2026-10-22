@@ -6,7 +6,11 @@ using NAudio.Wave;
 namespace HearingAid.Core.Audio;
 
 /// <summary>Windows 오디오 입력 장치(NAudio WaveIn)로부터 오디오를 수신하는 IAudioSource 구현.</summary>
-[AudioSource("WaveIn")]
+[AudioSource("WaveIn",
+    DisplayName = "마이크 등 입력 장치",
+    Description = "마이크처럼 PC로 들어오는 소리를 받아 적습니다. 옆에 있는 사람의 말을 들을 때 쓰세요.\n" +
+                  "VB-CABLE 같은 가상 오디오 케이블로 소리를 돌려 받을 때도 이것을 고르고, " +
+                  "deviceKeyword에 장치 이름 일부(예: 마이크, CABLE Output)를 적습니다.")]
 public class WaveInAudioSource : IAudioSource
 {
     const int SampleRate = AudioPipeline.SampleRate;
@@ -31,10 +35,12 @@ public class WaveInAudioSource : IAudioSource
     WaveIn? waveIn;
 
     public WaveInAudioSource(
-        [Description("입력 장치 이름에 포함되어야 하는 문자열 (부분 일치, 대소문자 무시)")]
+        [Description("입력 장치 이름에 포함되어야 하는 문자열 (부분 일치, 대소문자 무시). 예: 마이크, CABLE Output. 장치 이름은 Windows 소리 설정 > 입력에서 확인")]
         string deviceKeyword,
         [Description("입력 증폭 배율 (1.0 = 원본, 2.0 = 2배 증폭 등. 클리핑 방지를 위해 [-1, 1] 범위로 clamp됨)")]
         float gain = 1.0f,
+        [Description(AudioPipeline.AutoGainDescription)]
+        bool autoGain = true,
         [Description("드라이버 캡처 버퍼 길이 (ms). 짧을수록 지연이 줄지만 너무 작으면 끊길 수 있음")]
         int bufferMilliseconds = 32,
         [Description("VAD(음성 감지) 확률 임계값 (0~1). 높을수록 발화로 인식하는 기준이 엄격해짐")]
@@ -52,6 +58,7 @@ public class WaveInAudioSource : IAudioSource
 
         this.audioChannel = new AudioChannel(new SileroVad(AudioPipeline.VadModelPath))
         {
+            autoGain = autoGain,
             vadThreshold = vadThreshold,
             minSilenceMs = minSilenceMs,
             speechPadMs = speechPadMs,

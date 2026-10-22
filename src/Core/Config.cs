@@ -58,6 +58,10 @@ public class Config
             .Select(n => n!)
             .ToList();
 
+    /// <summary>오디오 소스 종류의 표시 이름/설명. 알 수 없는 종류면 null.</summary>
+    public static AudioSourceAttribute? GetAudioSourceInfo(string typeName) =>
+        FindAudioSourceType(typeName)?.GetCustomAttribute<AudioSourceAttribute>();
+
     static Type? FindAudioSourceType(string typeName) =>
         AudioSourceTypes().FirstOrDefault(t =>
             t.GetCustomAttribute<AudioSourceAttribute>()?.Name.Equals(typeName, StringComparison.OrdinalIgnoreCase) == true);
@@ -90,14 +94,13 @@ public class Config
 
     #region Instance
     
-    [JsonPropertyName("whisperServerExe")]
-    public string WhisperServerExe { get; set; } = "";
+    /// <summary>기본으로 쓸 Whisper 모델 id(ModelStore 참고). 비어 있거나 설치돼 있지 않으면 설치된 첫 모델을 쓴다.</summary>
+    [JsonPropertyName("model")]
+    public string? Model { get; set; }
 
-    [JsonPropertyName("whisperModel")]
-    public string WhisperModel { get; set; } = "";
-
-    [JsonPropertyName("port")]
-    public int Port { get; set; } = 8080;
+    /// <summary>화자 이름 → 모델 id. 여기 없는 화자는 Model을 쓴다.</summary>
+    [JsonPropertyName("speakerModels")]
+    public Dictionary<string, string>? SpeakerModels { get; set; }
 
     [JsonPropertyName("language")]
     public string Language { get; set; } = "ko";
@@ -105,11 +108,9 @@ public class Config
     [JsonPropertyName("threads")]
     public int Threads { get; set; } = 4;
 
-    [JsonPropertyName("captureDevice")]
-    public string CaptureDevice { get; set; } = "CABLE Output";
-
-    [JsonPropertyName("showServerLog")]
-    public bool ShowServerLog { get; set; } = false;
+    /// <summary>시작할 때 GitHub에서 새 버전을 확인할지 여부.</summary>
+    [JsonPropertyName("checkForUpdates")]
+    public bool CheckForUpdates { get; set; } = true;
 
     /// <summary>{ "type": "<AudioSourceAttribute 이름>", 생성자 파라미터... } 형태의 flat 객체.</summary>
     [JsonPropertyName("audioSource")]
@@ -157,20 +158,11 @@ public class Config
         }
 
         var cfg = merged.Deserialize<Config>(DeserializeOptions) ?? new Config();
-        cfg.WhisperServerExe = ResolvePath(cfg.WhisperServerExe);
-        cfg.WhisperModel = ResolvePath(cfg.WhisperModel);
         cfg.FilePath = baseConfigPath;
         cfg.EffectiveProfileName = resolvedProfileName;
         cfg.ProfilesDir = profilesDir;
         return cfg;
     }
-
-    /// <summary>절대 경로가 아니면 실행 파일 기준 상대경로로 간주해 AppContext.BaseDirectory와 합친다.
-    /// 번들된 whisper-server.exe/모델을 앱 폴더 기준으로 바로 찾을 수 있게 하기 위함.</summary>
-    static string ResolvePath(string path) =>
-        string.IsNullOrEmpty(path) || Path.IsPathRooted(path)
-            ? path
-            : Path.Combine(AppContext.BaseDirectory, path);
 
     static JsonObject MergePatch(JsonObject target, JsonObject patch)
     {
@@ -187,11 +179,26 @@ public class Config
 
     /// <summary>base 파일의 activeProfile 키만 갱신한다. Config 전체를 덮어쓰지 않는다 — 그러면
     /// merge된(=profile이 반영된) 값이 base 파일로 새어 들어가 버린다.</summary>
-    public static void SetActiveProfile(string baseConfigPath, string? profileName)
+    public static void SetActiveProfile(string baseConfigPath, string? profileName) =>
+        SetBaseValue(baseConfigPath, "activeProfile", profileName);
+
+    /// <summary>base 파일의 model 키(프로필이 재정의하지 않을 때 쓰는 기본 모델)만 갱신한다.</summary>
+    public static void SetDefaultModel(string baseConfigPath, string? modelId) =>
+        SetBaseValue(baseConfigPath, "model", modelId);
+
+    /// <summary>base 파일에 적힌 문자열 값을 그대로(프로필 미적용) 돌려준다.</summary>
+    public static string? GetBaseValue(string baseConfigPath, string key)
+    {
+        if (!File.Exists(baseConfigPath)) return null;
+        var node = JsonNode.Parse(File.ReadAllText(baseConfigPath)) as JsonObject;
+        return node?[key] is JsonValue v && v.TryGetValue(out string? s) ? s : null;
+    }
+
+    static void SetBaseValue(string baseConfigPath, string key, string? value)
     {
         var node = JsonNode.Parse(File.ReadAllText(baseConfigPath)) as JsonObject ?? new JsonObject();
-        if (string.IsNullOrEmpty(profileName)) node.Remove("activeProfile");
-        else node["activeProfile"] = profileName;
+        if (string.IsNullOrEmpty(value)) node.Remove(key);
+        else node[key] = value;
         File.WriteAllText(baseConfigPath, node.ToJsonString(SerializeOptions));
     }
 

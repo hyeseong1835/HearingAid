@@ -8,7 +8,11 @@ namespace HearingAid.Core.Audio;
 
 /// <summary>Windows 기본(또는 지정) 재생 장치의 출력을 WASAPI 루프백으로 캡처하는 IAudioSource 구현.
 /// VB-CABLE 같은 가상 오디오 드라이버 설치 없이 시스템 소리를 바로 받아온다.</summary>
-[AudioSource("WasapiLoopback")]
+[AudioSource("WasapiLoopback",
+    DisplayName = "PC 소리 전체",
+    Description = "스피커·헤드폰으로 나오는 PC 소리를 모두 받아 적습니다. 유튜브, 회의 앱, 게임 등 " +
+                  "PC에서 재생되는 소리를 자막처럼 보고 싶을 때 쓰세요. 별도 설치가 필요 없습니다.\n" +
+                  "알림음·음악 같은 다른 소리도 함께 들어가므로, 한 프로그램만 듣고 싶다면 '특정 프로그램 소리만'을 고르세요.")]
 public class WasapiLoopbackAudioSource : IAudioSource
 {
     const int TargetRate = AudioPipeline.SampleRate;
@@ -45,6 +49,8 @@ public class WasapiLoopbackAudioSource : IAudioSource
         string? deviceKeyword = null,
         [Description("입력 증폭 배율 (1.0 = 원본, 2.0 = 2배 증폭 등. 클리핑 방지를 위해 [-1, 1] 범위로 clamp됨)")]
         float gain = 1.0f,
+        [Description(AudioPipeline.AutoGainDescription)]
+        bool autoGain = true,
         [Description("캡처 버퍼를 읽어 내보내는 주기 (ms). 짧을수록 지연이 줄지만 CPU 사용이 늘어남")]
         int pumpIntervalMs = 100,
         [Description("내부 캡처 버퍼 길이 (초). 처리 지연 등으로 소비가 밀릴 때 얼마나 버틸지 결정")]
@@ -65,6 +71,7 @@ public class WasapiLoopbackAudioSource : IAudioSource
 
         this.audioChannel = new AudioChannel(new SileroVad(AudioPipeline.VadModelPath))
         {
+            autoGain = autoGain,
             vadThreshold = vadThreshold,
             minSilenceMs = minSilenceMs,
             speechPadMs = speechPadMs,

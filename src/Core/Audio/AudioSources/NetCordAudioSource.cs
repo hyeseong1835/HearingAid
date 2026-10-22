@@ -13,7 +13,11 @@ namespace HearingAid.Core.Audio;
 /// 시작하면 봇이 접속한 모든 서버를 뒤져 설정된 유저 ID를 찾고, 그 유저가 있는 음성 채널에
 /// 들어가 오디오를 수신한다. 유저가 채널을 옮기거나 나가면 자동으로 따라가거나 대기한다.
 /// </summary>
-[AudioSource("NetCord")]
+[AudioSource("NetCord",
+    DisplayName = "Discord 음성 채널",
+    Description = "Discord 봇이 대상 사용자가 있는 음성 채널에 따라 들어가, 말하는 사람별로 나눠 받아 적습니다(화자 구분).\n" +
+                  "Discord 개발자 포털에서 만든 봇 토큰이 필요하고, 그 봇이 해당 서버에 초대돼 있어야 합니다. " +
+                  "PC 소리와 상관없이 동작하므로 Discord를 음소거해 둬도 됩니다.")]
 public class NetCordAudioSource : IAudioSource
 {
     /// <summary>SSRC(발신자)별 Opus 디코드 + 48kHz→16kHz 다운샘플 파이프라인.</summary>
@@ -83,12 +87,13 @@ public class NetCordAudioSource : IAudioSource
         public AudioChannel channel;
         internal SsrcPipeline pipeline;
 
-        public UserData(ulong userId, UserConfig cfg, SileroVad vad, float vadThreshold, int minSilenceMs, int speechPadMs, int minSpeechMs)
+        public UserData(ulong userId, UserConfig cfg, SileroVad vad, bool autoGain, float vadThreshold, int minSilenceMs, int speechPadMs, int minSpeechMs)
         {
             this.userId = userId;
             this.config = cfg;
             this.channel = new AudioChannel(vad)
             {
+                autoGain = autoGain,
                 vadThreshold = vadThreshold,
                 minSilenceMs = minSilenceMs,
                 speechPadMs = speechPadMs,
@@ -130,6 +135,7 @@ public class NetCordAudioSource : IAudioSource
     readonly string token;
     readonly ulong targetUserId;
     readonly float gain;
+    readonly bool autoGain;
     readonly float lowPassCutoffHz;
     readonly float lowPassQ;
     readonly float vadThreshold;
@@ -161,10 +167,10 @@ public class NetCordAudioSource : IAudioSource
     }
 
     public NetCordAudioSource(
-        [Description("Discord 봇 토큰")] 
+        [Description("Discord 봇 토큰. discord.com/developers/applications 에서 봇을 만들고 Bot 탭의 Reset Token으로 발급. 남에게 보여주지 말 것")]
         string token,
         
-        [Description("추적할 대상 사용자의 Discord ID")]
+        [Description("따라갈 사용자(보통 본인)의 Discord ID(숫자). Discord 설정 > 고급 > 개발자 모드를 켠 뒤 사용자를 우클릭 > 'ID 복사'")]
         ulong targetUserId,
         
         [Description("미리 등록해둘 사용자 목록 (userId/name/gain/lowPassCutoffHz/lowPassQ). name을 비워두면 그 사람이 처음 말할 때 디스코드 닉네임/표시이름으로 자동 채워진다. 비워두면 실제 발화가 감지될 때 자동으로 추가된다.")]
@@ -172,6 +178,8 @@ public class NetCordAudioSource : IAudioSource
 
         [Description("입력 증폭 배율 (1.0 = 원본, 2.0 = 2배 증폭 등. 클리핑 방지를 위해 [-1, 1] 범위로 clamp됨)")]
         float gain = 1.0f,
+        [Description(AudioPipeline.AutoGainDescription + ". 화자마다 따로 맞춘다")]
+        bool autoGain = true,
         [Description("48kHz→16kHz 다운샘플 전 안티앨리어싱 저역통과 필터 차단 주파수 (Hz)")]
         float lowPassCutoffHz = 7000f,
         [Description("저역통과 필터의 Q(공진) 값. 0.707은 표준 Butterworth 특성")]
@@ -188,6 +196,7 @@ public class NetCordAudioSource : IAudioSource
         this.token = token;
         this.targetUserId = targetUserId;
         this.gain = gain;
+        this.autoGain = autoGain;
         this.lowPassCutoffHz = lowPassCutoffHz;
         this.lowPassQ = lowPassQ;
         this.vadThreshold = vadThreshold;
@@ -197,7 +206,7 @@ public class NetCordAudioSource : IAudioSource
 
         this.userDataMap = (knownUsers ?? [])
             .ToDictionary(u => u.userId, u => new UserData(u.userId, u, new SileroVad(AudioPipeline.VadModelPath),
-                vadThreshold, minSilenceMs, speechPadMs, minSpeechMs));
+                autoGain, vadThreshold, minSilenceMs, speechPadMs, minSpeechMs));
     }
 
 #region 외부 이벤트
@@ -405,8 +414,9 @@ public class NetCordAudioSource : IAudioSource
                     lowPassQ = lowPassQ,
                     gain = gain
                 }, 
-                new SileroVad(AudioPipeline.VadModelPath), 
-                vadThreshold, 
+                new SileroVad(AudioPipeline.VadModelPath),
+                autoGain,
+                vadThreshold,
                 minSilenceMs, 
                 speechPadMs, 
                 minSpeechMs

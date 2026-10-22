@@ -8,6 +8,10 @@
     <Nullable>enable</Nullable>
     <RootNamespace>HearingAid</RootNamespace>
     <AssemblyName>HearingAid</AssemblyName>
+
+    <!-- 릴리스 태그(v<Version>)와 맞춘다. 앱은 이 값으로 GitHub 최신 릴리스와 비교해 업데이트를 판단한다. -->
+    <Version>1.0.0</Version>
+    <IncludeSourceRevisionInIdentifier>false</IncludeSourceRevisionInIdentifier>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,9 +24,6 @@
     <None Include="profiles\**\*.json" Condition="Exists('profiles')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="whisper\*.exe;whisper\*.dll" Condition="Exists('whisper')">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 
   <ItemGroup>
@@ -30,6 +31,8 @@
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.20.1" />
     <PackageReference Include="Whisper.net" Version="1.8.1" />
     <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.8.1" />
+    <!-- Vulkan을 못 쓰는 PC(드라이버 없음, VM 등)를 위한 CPU 폴백. Whisper.net이 Vulkan → CPU 순으로 자동 선택한다. -->
+    <PackageReference Include="Whisper.net.Runtime" Version="1.8.1" />
     <PackageReference Include="NetCord" Version="1.0.0-beta.11" />
     <PackageReference Include="libdave" Version="1.1.1.7" />
     <PackageReference Include="libsodium" Version="1.0.22" />

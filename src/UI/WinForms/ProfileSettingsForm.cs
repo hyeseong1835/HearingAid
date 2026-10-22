@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using HearingAid.Core;
 using HearingAid.Core.Audio;
+using HearingAid.Core.Stt;
 
 namespace HearingAid;
 
@@ -26,9 +27,17 @@ public class ProfileSettingsForm : Form
     readonly FlowLayoutPanel contentPanel = new();
     readonly Label detailTitle = new();
     readonly Label baseNoteLabel = new();
+    readonly Panel modelHeaderPanel = new();
+    readonly CheckBox overrideModelCheck = new();
+    readonly ComboBox modelCombo = new();
+    readonly Label speakerModelLabel = new();
+    readonly DataGridView speakerGrid = new();
+    readonly DataGridViewComboBoxColumn speakerModelColumn = new();
+    readonly Panel speakerButtonsPanel = new();
     readonly Panel overrideHeaderPanel = new();
     readonly CheckBox overrideAudioSourceCheck = new();
     readonly ComboBox typeCombo = new();
+    readonly Label audioSourceDescLabel = new();
     readonly Label otherJsonLabel = new();
     readonly TextBox otherJsonBox = new();
     readonly Label jsonErrorLabel = new();
@@ -44,7 +53,11 @@ public class ProfileSettingsForm : Form
     ProfileItem? selected;
     JsonObject currentPatch = new();
     bool suppressEvents;
+    bool suppressSelection;
     readonly List<AudioSourceSettingRow> currentRows = new();
+
+    /// <summary>전용 UI로 편집하므로 "기타 설정 재정의 (JSON)"에서는 빼는 키.</summary>
+    static readonly string[] DedicatedKeys = ["audioSource", "model", "speakerModels"];
 
     sealed class ProfileItem
     {
@@ -83,7 +96,7 @@ public class ProfileSettingsForm : Form
         list.ForeColor = Color.Gainsboro;
         list.BorderStyle = BorderStyle.None;
         list.IntegralHeight = false;
-        list.SelectedIndexChanged += (s, e) => OnSelectionChanged();
+        list.SelectedIndexChanged += (s, e) => { if (!suppressSelection) OnSelectionChanged(); };
 
         var sideButtons = new Panel { Dock = DockStyle.Bottom, Height = 36 };
         addBtn.Text = "+ 추가"; addBtn.Width = 100; addBtn.Height = 28; addBtn.Location = new Point(4, 4);
@@ -107,6 +120,54 @@ public class ProfileSettingsForm : Form
         baseNoteLabel.Text = "(기본값)은 appsettings.json 자체이며 여기서 편집할 수 없습니다. 새 프로필을 만들어 재정의하세요.";
         baseNoteLabel.MaximumSize = new Size(540, 0);
 
+        // --- 모델 재정의 ---
+        overrideModelCheck.Text = "모델 재정의";
+        overrideModelCheck.AutoSize = true;
+        overrideModelCheck.Location = new Point(12, 4);
+        overrideModelCheck.CheckedChanged += (s, e) => modelCombo.Enabled = overrideModelCheck.Checked;
+
+        modelCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+        modelCombo.Location = new Point(160, 1);
+        modelCombo.Width = 200;
+
+        modelHeaderPanel.Height = 32;
+        modelHeaderPanel.Margin = new Padding(0, 0, 0, 4);
+        modelHeaderPanel.Controls.Add(overrideModelCheck);
+        modelHeaderPanel.Controls.Add(modelCombo);
+
+        // --- 화자별 모델 ---
+        speakerModelLabel.AutoSize = true;
+        speakerModelLabel.Margin = new Padding(12, 4, 0, 4);
+        speakerModelLabel.ForeColor = Color.Silver;
+        speakerModelLabel.Text = "화자별 모델 (목록에 없는 화자는 위 모델을 사용)";
+
+        speakerGrid.Width = 560;
+        speakerGrid.Height = 120;
+        speakerGrid.Margin = new Padding(12, 0, 12, 0);
+        speakerGrid.AllowUserToAddRows = true;
+        speakerGrid.AllowUserToDeleteRows = true;
+        speakerGrid.RowHeadersVisible = false;
+        speakerGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+        speakerGrid.BackgroundColor = Color.FromArgb(30, 30, 34);
+        speakerGrid.DefaultCellStyle.BackColor = Color.FromArgb(30, 30, 34);
+        speakerGrid.DefaultCellStyle.ForeColor = Color.Gainsboro;
+        speakerGrid.EnableHeadersVisualStyles = false;
+        speakerGrid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(40, 40, 46);
+        speakerGrid.ColumnHeadersDefaultCellStyle.ForeColor = Color.Gainsboro;
+        speakerGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "speaker", HeaderText = "화자 (표시 이름)" });
+        speakerModelColumn.Name = "model";
+        speakerModelColumn.HeaderText = "모델";
+        speakerModelColumn.FlatStyle = FlatStyle.Flat;
+        speakerGrid.Columns.Add(speakerModelColumn);
+        // 설치되지 않은 모델 id가 파일에 적혀 있으면 콤보 셀이 예외를 던진다. 그 값은 Load에서 항목에 추가하므로 무시해도 된다.
+        speakerGrid.DataError += (s, e) => e.ThrowException = false;
+
+        var addSpeakersBtn = new Button { Text = "인식된 화자 추가", Width = 150, Height = 28, Location = new Point(12, 2) };
+        addSpeakersBtn.Click += (s, e) => AddRecognizedSpeakers();
+        speakerButtonsPanel.Height = 34;
+        speakerButtonsPanel.Margin = new Padding(0, 4, 0, 8);
+        speakerButtonsPanel.Controls.Add(addSpeakersBtn);
+
         overrideAudioSourceCheck.Text = "오디오 소스 재정의";
         overrideAudioSourceCheck.AutoSize = true;
         overrideAudioSourceCheck.Location = new Point(12, 4);
@@ -120,8 +181,20 @@ public class ProfileSettingsForm : Form
 
         typeCombo.DropDownStyle = ComboBoxStyle.DropDownList;
         typeCombo.Location = new Point(160, 1);
-        typeCombo.Width = 200;
+        typeCombo.Width = 320;
         foreach (var n in Config.GetAvailableAudioSourceTypeNames()) typeCombo.Items.Add(n);
+        // 항목 값은 설정 파일에 쓰는 type 이름 그대로 두고, 화면에는 알아보기 쉬운 이름을 보여준다.
+        typeCombo.FormattingEnabled = true;
+        typeCombo.Format += (s, e) =>
+        {
+            if (e.ListItem is string n && Config.GetAudioSourceInfo(n)?.DisplayName is { } display)
+                e.Value = $"{display} ({n})";
+        };
+
+        audioSourceDescLabel.AutoSize = true;
+        audioSourceDescLabel.Margin = new Padding(12, 0, 12, 8);
+        audioSourceDescLabel.MaximumSize = new Size(560, 0);
+        audioSourceDescLabel.ForeColor = Color.Silver;
         typeCombo.SelectedIndexChanged += (s, e) =>
         {
             if (suppressEvents) return;
@@ -197,25 +270,40 @@ public class ProfileSettingsForm : Form
         Controls.Add(bottom);
     }
 
-    void RefreshList()
+    /// <summary>사이드바 목록을 다시 채운다. reloadDetail이 false면 선택은 유지하되 오른쪽 상세 화면은
+    /// 다시 읽지 않는다(적용처럼 목록 표시만 바뀌는 경우).</summary>
+    void RefreshList(bool reloadDetail = true)
     {
         string? keepName = selected?.Name;
         bool hadSelection = selected is not null;
 
-        list.Items.Clear();
-        list.Items.Add(new ProfileItem(null, engine.Config.EffectiveProfileName is null));
-        foreach (var n in Config.ListProfileNames(profilesDir))
-            list.Items.Add(new ProfileItem(n, string.Equals(n, engine.Config.EffectiveProfileName, StringComparison.OrdinalIgnoreCase)));
+        suppressSelection = true;
+        try
+        {
+            list.Items.Clear();
+            list.Items.Add(new ProfileItem(null, engine.Config.EffectiveProfileName is null));
+            foreach (var n in Config.ListProfileNames(profilesDir))
+                list.Items.Add(new ProfileItem(n, string.Equals(n, engine.Config.EffectiveProfileName, StringComparison.OrdinalIgnoreCase)));
 
-        current.Text = $"현재 프로필: {engine.Config.EffectiveProfileName ?? "(기본값)"}";
+            current.Text = $"현재 프로필: {engine.Config.EffectiveProfileName ?? "(기본값)"}";
 
-        int idx = -1;
-        if (hadSelection)
-            idx = list.Items.Cast<ProfileItem>().ToList().FindIndex(i => string.Equals(i.Name, keepName, StringComparison.OrdinalIgnoreCase));
+            int idx = -1;
+            if (hadSelection)
+                idx = list.Items.Cast<ProfileItem>().ToList().FindIndex(i => string.Equals(i.Name, keepName, StringComparison.OrdinalIgnoreCase));
 
-        int newIndex = idx >= 0 ? idx : 0;
-        if (list.SelectedIndex == newIndex) OnSelectionChanged();
-        else list.SelectedIndex = newIndex;
+            list.SelectedIndex = idx >= 0 ? idx : 0;
+        }
+        finally { suppressSelection = false; }
+
+        if (reloadDetail)
+        {
+            OnSelectionChanged();
+        }
+        else
+        {
+            selected = (ProfileItem)list.SelectedItem!;
+            UpdateButtons();
+        }
     }
 
     void OnSelectionChanged()
@@ -234,7 +322,7 @@ public class ProfileSettingsForm : Form
 
     void LoadDetailForSelected()
     {
-        currentRows.Clear();
+        // currentRows는 여기서 비우지 않는다 — RebuildAudioSourceRows가 옛 행을 패널에서 빼고 정리한다.
         jsonErrorLabel.Text = "";
 
         if (selected!.Name is null)
@@ -264,9 +352,11 @@ public class ProfileSettingsForm : Form
             typeCombo.Enabled = hasOverride;
             typeCombo.SelectedItem = seedType;
 
+            LoadModelOverrides();
+
             var otherObj = new JsonObject();
             foreach (var kv in currentPatch.ToList())
-                if (kv.Key != "audioSource")
+                if (!DedicatedKeys.Contains(kv.Key))
                     otherObj[kv.Key] = kv.Value?.DeepClone();
             otherJsonBox.Text = otherObj.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
         }
@@ -274,11 +364,66 @@ public class ProfileSettingsForm : Form
 
         RebuildAudioSourceRows(seedFromPatch: true);
         ValidateOtherJson();
+        detailScroll.AutoScrollPosition = Point.Empty; // 다른 프로필을 고른 것이므로 맨 위부터 보여준다
+    }
+
+    static string? StringValue(JsonNode? node) =>
+        node is JsonValue v && v.TryGetValue(out string? s) && !string.IsNullOrWhiteSpace(s) ? s : null;
+
+    /// <summary>currentPatch의 model/speakerModels를 모델 콤보와 화자 그리드에 채운다.
+    /// 설치되지 않은 모델이 적혀 있어도 값이 사라지지 않도록 선택지에 함께 넣는다.</summary>
+    void LoadModelOverrides()
+    {
+        string? modelOverride = StringValue(currentPatch["model"]);
+        var speakerModels = (currentPatch["speakerModels"] as JsonObject)?
+            .Select(kv => (Speaker: kv.Key, Model: StringValue(kv.Value)))
+            .Where(p => p.Model is not null)
+            .ToList() ?? [];
+
+        var choices = ModelStore.ListInstalled()
+            .Concat(speakerModels.Select(p => p.Model!))
+            .Concat(modelOverride is null ? Array.Empty<string>() : new[] { modelOverride })
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        modelCombo.Items.Clear();
+        modelCombo.Items.AddRange(choices);
+        overrideModelCheck.Checked = modelOverride is not null;
+        modelCombo.Enabled = modelOverride is not null;
+        modelCombo.SelectedItem = modelOverride
+            ?? choices.FirstOrDefault(c => c.Equals(ModelStore.ResolveDefault(engine.Config.Model), StringComparison.OrdinalIgnoreCase));
+
+        speakerGrid.Rows.Clear();
+        speakerModelColumn.Items.Clear();
+        speakerModelColumn.Items.AddRange(choices);
+        foreach (var (speaker, model) in speakerModels)
+            speakerGrid.Rows.Add(speaker, model!);
+    }
+
+    void AddRecognizedSpeakers()
+    {
+        var existing = speakerGrid.Rows.Cast<DataGridViewRow>()
+            .Where(r => !r.IsNewRow)
+            .Select(r => r.Cells["speaker"].Value?.ToString()?.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string speaker in engine.GetRecodes()
+                     .Select(kv => kv.Value.speaker)
+                     .OfType<string>()
+                     .Where(s => !string.IsNullOrWhiteSpace(s))
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (existing.Add(speaker))
+            {
+                int i = speakerGrid.Rows.Add();
+                speakerGrid.Rows[i].Cells["speaker"].Value = speaker; // 모델 칸은 비워 둔다
+            }
+        }
     }
 
     void RebuildAudioSourceRows(bool seedFromPatch)
     {
-        foreach (var r in currentRows) contentPanel.Controls.Remove(r);
+        var oldRows = currentRows.ToList();
         currentRows.Clear();
 
         if (overrideAudioSourceCheck.Checked && typeCombo.SelectedItem is string type)
@@ -303,8 +448,56 @@ public class ProfileSettingsForm : Form
             }
         }
 
-        RenderContentPanel();
+        // 프로필 상세가 이미 그려져 있으면 오디오 소스 부분만 바꿔 끼운다. 패널 전체를 지우고 다시 그리면
+        // 깜빡이고 스크롤이 맨 위로 튄다.
+        if (contentPanel.Controls.Contains(overrideHeaderPanel))
+            ReplaceAudioSourceRows(oldRows);
+        else
+        {
+            foreach (var r in oldRows) r.Dispose();
+            RenderContentPanel();
+        }
     }
+
+    void ReplaceAudioSourceRows(List<AudioSourceSettingRow> oldRows)
+    {
+        Point scroll = detailScroll.AutoScrollPosition;
+        contentPanel.SuspendLayout();
+        try
+        {
+            foreach (var r in oldRows)
+            {
+                contentPanel.Controls.Remove(r);
+                r.Dispose();
+            }
+
+            int index = contentPanel.Controls.IndexOf(overrideHeaderPanel) + 1;
+
+            audioSourceDescLabel.Text = AudioSourceDescription();
+            if (audioSourceDescLabel.Text.Length > 0)
+            {
+                if (!contentPanel.Controls.Contains(audioSourceDescLabel)) contentPanel.Controls.Add(audioSourceDescLabel);
+                contentPanel.Controls.SetChildIndex(audioSourceDescLabel, index++);
+            }
+            else
+            {
+                contentPanel.Controls.Remove(audioSourceDescLabel);
+            }
+
+            foreach (var row in currentRows)
+            {
+                contentPanel.Controls.Add(row);
+                contentPanel.Controls.SetChildIndex(row, index++);
+            }
+        }
+        finally { contentPanel.ResumeLayout(); }
+
+        // AutoScrollPosition은 읽을 때 음수, 쓸 때 양수로 다룬다.
+        detailScroll.AutoScrollPosition = new Point(-scroll.X, -scroll.Y);
+    }
+
+    string AudioSourceDescription() =>
+        typeCombo.SelectedItem is string type ? Config.GetAudioSourceInfo(type)?.Description ?? "" : "";
 
     void RenderContentPanel()
     {
@@ -317,7 +510,13 @@ public class ProfileSettingsForm : Form
             return;
         }
 
+        contentPanel.Controls.Add(modelHeaderPanel);
+        contentPanel.Controls.Add(speakerModelLabel);
+        contentPanel.Controls.Add(speakerGrid);
+        contentPanel.Controls.Add(speakerButtonsPanel);
         contentPanel.Controls.Add(overrideHeaderPanel);
+        audioSourceDescLabel.Text = AudioSourceDescription();
+        if (audioSourceDescLabel.Text.Length > 0) contentPanel.Controls.Add(audioSourceDescLabel);
         foreach (var row in currentRows) contentPanel.Controls.Add(row);
         contentPanel.Controls.Add(otherJsonLabel);
         contentPanel.Controls.Add(otherJsonBox);
@@ -362,6 +561,7 @@ public class ProfileSettingsForm : Form
     {
         if (selected?.Name is not { } name) return;
         foreach (var row in currentRows) row.CommitPending();
+        if (speakerGrid.IsCurrentCellInEditMode) speakerGrid.EndEdit();
         if (!IsOtherJsonValid()) return;
 
         string path = ProfilePath(name);
@@ -370,6 +570,21 @@ public class ProfileSettingsForm : Form
             : new JsonObject();
 
         var combined = new JsonObject();
+        if (overrideModelCheck.Checked && modelCombo.SelectedItem is string model)
+            combined["model"] = model;
+
+        var speakerModels = new JsonObject();
+        foreach (DataGridViewRow r in speakerGrid.Rows)
+        {
+            if (r.IsNewRow) continue;
+            string? speaker = r.Cells["speaker"].Value?.ToString()?.Trim();
+            string? speakerModel = r.Cells["model"].Value?.ToString();
+            if (!string.IsNullOrEmpty(speaker) && !string.IsNullOrEmpty(speakerModel))
+                speakerModels[speaker] = speakerModel;
+        }
+        if (speakerModels.Count > 0)
+            combined["speakerModels"] = speakerModels;
+
         if (overrideAudioSourceCheck.Checked && typeCombo.SelectedItem is string type)
         {
             // 디스크의 audioSource를 베이스로 삼는다 — 그래야 다이얼로그가 열려 있는 동안
@@ -384,12 +599,14 @@ public class ProfileSettingsForm : Form
 
         var otherParsed = JsonNode.Parse(string.IsNullOrWhiteSpace(otherJsonBox.Text) ? "{}" : otherJsonBox.Text) as JsonObject ?? new JsonObject();
         foreach (var kv in otherParsed.ToList())
-            if (kv.Key != "audioSource")
+            if (!DedicatedKeys.Contains(kv.Key))
                 combined[kv.Key] = kv.Value?.DeepClone();
 
         Directory.CreateDirectory(profilesDir);
         File.WriteAllText(path, combined.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        RefreshList();
+        // 화면은 이미 저장한 내용 그대로이므로 다시 읽어 그리지 않는다(깜빡임·스크롤 초기화 방지).
+        currentPatch = combined.DeepClone().AsObject();
+        hint.Text = $"'{name}' 저장됨";
 
         // 지금 저장한 프로필이 활성 프로필이면, 재시작 없이도 실행 중인 오디오 소스가
         // 고친 값(예: knownUsers 이름)을 바로 반영하도록 알린다.
@@ -411,7 +628,7 @@ public class ProfileSettingsForm : Form
             Config.SetActiveProfile(baseConfigPath, profileName); // Build보다 먼저: null(기본값)일 때도 정확히 반영되도록
             NewEngine = Config.BuildEngine(baseConfigPath, profilesDir, profileName);
 
-            RefreshList();
+            RefreshList(reloadDetail: false);
         }
         catch (Exception ex)
         {

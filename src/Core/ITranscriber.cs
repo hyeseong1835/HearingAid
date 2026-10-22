@@ -15,6 +15,8 @@ public interface ITranscriber : IDisposable
 
     Config Config { get; }
     bool IsRunning { get; }
+    /// <summary>오디오 소스 중 하나라도 발화자(화자)를 구분해 보내는지. 아니면 UI가 화자 칼럼을 숨긴다.</summary>
+    bool SpeakerRecognition { get; }
 
     ValueTask StartAsync();
     ValueTask StopAsync();

@@ -1,5 +1,3 @@
-using HearingAid.Core.Stt;
-
 namespace HearingAid.Core.Audio;
 
 public class AudioChannel : IDisposable
@@ -12,7 +10,9 @@ public class AudioChannel : IDisposable
     /// 무관하게 신호를 항상 보고 싶은 소비자용). samplesAvailableHandler와 달리 매 청크마다 호출된다.</summary>
     public Action<ReadOnlyMemory<float>>? rawSamplesAvailable;
 
-    public WhisperModel? whisperModel;
+    /// <summary>켜면 VAD/전사/파형에 넘기기 전에 작은 입력을 자동으로 키운다(AutoGain).</summary>
+    public bool autoGain;
+    readonly AutoGain agc = new();
 
     public float vadThreshold = 0.7f;
     public int minSilenceMs = 600;
@@ -41,6 +41,13 @@ public class AudioChannel : IDisposable
     /// 발화 구간이 끝났다고 판단될 때만 samplesAvailableHandler를 그 구간 전체와 함께 호출한다.</summary>
     public ValueTask PushSamples(string? speaker, ReadOnlyMemory<float> samples)
     {
+        if (autoGain)
+        {
+            float[] boosted = samples.ToArray(); // 호출자 버퍼를 건드리지 않도록 복사본에 적용
+            agc.Process(boosted);
+            samples = boosted;
+        }
+
         rawSamplesAvailable?.Invoke(samples);
 
         pending.AddRange(samples.Span);

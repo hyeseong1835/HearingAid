@@ -10,7 +10,11 @@ namespace HearingAid.Core.Audio;
 
 /// <summary>Windows Process Loopback(NAudio 3의 WasapiRecorderBuilder.WithProcessLoopback,
 /// Windows 10 Build 19041+)로 특정 프로그램(프로세스)에서 나오는 소리만 골라 캡처하는 IAudioSource 구현.</summary>
-[AudioSource("ProcessLoopback")]
+[AudioSource("ProcessLoopback",
+    DisplayName = "특정 프로그램 소리만",
+    Description = "고른 프로그램(예: chrome, Zoom, Discord 앱)에서 나오는 소리만 받아 적습니다. " +
+                  "다른 프로그램의 알림음이나 음악은 섞이지 않습니다.\n" +
+                  "프로그램이 실행 중이고 소리를 낸 적이 있어야 목록에 나타납니다. Windows 10 2004 이상이 필요합니다.")]
 public class ProcessLoopbackAudioSource : IAudioSource
 {
     const int TargetRate = AudioPipeline.SampleRate;
@@ -29,8 +33,10 @@ public class ProcessLoopbackAudioSource : IAudioSource
     public bool IsRunning { get; private set; }
     public bool SpeakerRecognition => false;
 
+    /// <summary>캡처 패킷이 이만큼(ms) 끊기면 대상이 소리를 멈춘 것으로 보고 무음을 직접 흘려보낸다.</summary>
+    const int StarvedSilenceMs = 300;
+
     readonly string processName;
-    readonly bool includeChildProcesses;
     readonly float gain;
     readonly int pumpIntervalMs;
     readonly double bufferSeconds;
@@ -40,14 +46,18 @@ public class ProcessLoopbackAudioSource : IAudioSource
     ISampleProvider? resampled;
     CancellationTokenSource? cts;
     Thread? pumpThread;
+    long lastDataTick;
 
+    // includeChildProcesses 매개변수는 없앴다: false일 때 쓰던 ExcludeTargetProcessTree는 "자식 제외"가 아니라
+    // "이 프로그램을 뺀 나머지 전부"를 캡처하는 모드라 정반대로 동작했다. Windows에는 자식만 빼는 모드가 없다.
+    // 예전 프로필 파일에 키가 남아 있어도 생성자 매개변수와 매칭되지 않을 뿐이라 무시된다.
     public ProcessLoopbackAudioSource(
-        [RunningProcessPicker, Description("캡처할 프로그램 (실행 중이며 오디오 세션이 있는 프로세스명)")]
+        [RunningProcessPicker, Description("캡처할 프로그램 (실행 중이며 오디오 세션이 있는 프로세스명). 자식 프로세스의 소리도 함께 캡처한다")]
         string processName,
-        [Description("자식 프로세스(예: 브라우저 렌더러)의 소리도 포함할지 여부")]
-        bool includeChildProcesses = true,
         [Description("입력 증폭 배율 (1.0 = 원본, 2.0 = 2배 증폭 등. 클리핑 방지를 위해 [-1, 1] 범위로 clamp됨)")]
         float gain = 1.0f,
+        [Description(AudioPipeline.AutoGainDescription)]
+        bool autoGain = true,
         [Description("캡처 버퍼를 읽어 내보내는 주기 (ms). 짧을수록 지연이 줄지만 CPU 사용이 늘어남")]
         int pumpIntervalMs = 100,
         [Description("내부 캡처 버퍼 길이 (초). 처리 지연 등으로 소비가 밀릴 때 얼마나 버틸지 결정")]
@@ -62,13 +72,13 @@ public class ProcessLoopbackAudioSource : IAudioSource
         int minSpeechMs = 500)
     {
         this.processName = processName;
-        this.includeChildProcesses = includeChildProcesses;
         this.gain = gain;
         this.pumpIntervalMs = pumpIntervalMs;
         this.bufferSeconds = bufferSeconds;
 
         this.audioChannel = new AudioChannel(new SileroVad(AudioPipeline.VadModelPath))
         {
+            autoGain = autoGain,
             vadThreshold = vadThreshold,
             minSilenceMs = minSilenceMs,
             speechPadMs = speechPadMs,
@@ -85,12 +95,10 @@ public class ProcessLoopbackAudioSource : IAudioSource
             throw new Exception("프로세스별 오디오 캡처(Process Loopback)는 Windows 10 Build 19041 이상이 필요합니다.");
 
         Process proc = FindProcess(processName);
-        Description = $"{proc.ProcessName} (process loopback)";
+        Description = $"{proc.ProcessName} (PID {proc.Id}, process loopback)";
 
         recorder = await new WasapiRecorderBuilder()
-            .WithProcessLoopback((uint)proc.Id, includeChildProcesses
-                ? ProcessLoopbackMode.IncludeTargetProcessTree
-                : ProcessLoopbackMode.ExcludeTargetProcessTree)
+            .WithProcessLoopback((uint)proc.Id, ProcessLoopbackMode.IncludeTargetProcessTree)
             .BuildAsync();
 
         buffer = new BufferedWaveProvider(recorder.WaveFormat, TimeSpan.FromSeconds(bufferSeconds))
@@ -106,8 +114,10 @@ public class ProcessLoopbackAudioSource : IAudioSource
         ISampleProvider mono = new DownmixToMonoSampleProvider(floatSamples);
         resampled = new WdlResamplingSampleProvider(mono, TargetRate);
 
+        Interlocked.Exchange(ref lastDataTick, Environment.TickCount64);
         recorder.DataAvailable += (data, flags, _, _) =>
         {
+            Interlocked.Exchange(ref lastDataTick, Environment.TickCount64);
             if (flags.HasFlag(AudioClientBufferFlags.Silent))
                 buffer.AddSamples(new byte[data.Length]);
             else
@@ -128,13 +138,34 @@ public class ProcessLoopbackAudioSource : IAudioSource
         SetStatus?.Invoke($"캡처: {Description} — listening...");
     }
 
+    /// <summary>캡처 대상 프로세스를 고른다. 크롬·엣지·디스코드처럼 같은 이름의 프로세스가 여러 개인 프로그램은
+    /// 소리를 내는 프로세스(오디오 서비스)가 따로 있고, 아무 하나(예: 렌더러)를 고르면 그 트리에는 소리가 없어
+    /// 아무것도 캡처되지 않는다. 그래서 오디오 세션을 가진 프로세스를 우선하고, 애매하면 가장 먼저 시작된
+    /// 프로세스(보통 나머지 전부의 부모)를 골라 자식 트리째 캡처한다.</summary>
     static Process FindProcess(string processName)
     {
-        var candidates = Process.GetProcessesByName(processName);
-        if (candidates.Length > 0) return candidates[0];
+        if (processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            processName = processName[..^4];
 
-        var active = AudioSessionProcesses.ListActiveAudioProcessNames();
-        throw new Exception($"프로세스를 찾을 수 없습니다: '{processName}'. 현재 오디오 세션이 있는 프로그램: {string.Join(", ", active)}");
+        var candidates = Process.GetProcessesByName(processName);
+        if (candidates.Length == 0)
+        {
+            var active = AudioSessionProcesses.ListActiveAudioProcessNames();
+            throw new Exception($"프로세스를 찾을 수 없습니다: '{processName}'. 현재 오디오 세션이 있는 프로그램: {string.Join(", ", active)}");
+        }
+        if (candidates.Length == 1) return candidates[0];
+
+        var sessionPids = AudioSessionProcesses.ListSessionProcessIds(processName);
+        if (sessionPids.Count == 1 && candidates.FirstOrDefault(p => p.Id == sessionPids[0]) is { } audioProcess)
+            return audioProcess;
+
+        return candidates.OrderBy(StartTimeOrMax).First();
+    }
+
+    static DateTime StartTimeOrMax(Process p)
+    {
+        try { return p.StartTime; }
+        catch { return DateTime.MaxValue; } // 권한이 없어 시작 시각을 못 읽는 프로세스는 뒤로
     }
 
     void PumpLoop(CancellationToken token)
@@ -150,7 +181,17 @@ public class ProcessLoopbackAudioSource : IAudioSource
         {
             if (buf.BufferedBytes < neededBytes)
             {
-                Thread.Sleep(pumpIntervalMs / 2);
+                // 대상 프로그램이 소리를 멈추면 캡처 패킷 자체가 끊길 수 있다. 그러면 VAD가 발화 끝(무음)을 보지 못해
+                // 마지막 문장이 다음 소리가 날 때까지 전사되지 않으므로, 패킷이 한동안 없으면 무음을 직접 흘려보낸다.
+                if (Environment.TickCount64 - Interlocked.Read(ref lastDataTick) >= StarvedSilenceMs)
+                {
+                    _ = audioChannel.PushSamples(null, new float[chunkSize]);
+                    Thread.Sleep(pumpIntervalMs);
+                }
+                else
+                {
+                    Thread.Sleep(pumpIntervalMs / 2);
+                }
                 continue;
             }
 
