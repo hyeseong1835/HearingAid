@@ -17,7 +17,8 @@ namespace HearingAid.Core.Audio;
     DisplayName = "Discord 음성 채널",
     Description = "Discord 봇이 대상 사용자가 있는 음성 채널에 따라 들어가, 말하는 사람별로 나눠 받아 적습니다(화자 구분).\n" +
                   "Discord 개발자 포털에서 만든 봇 토큰이 필요하고, 그 봇이 해당 서버에 초대돼 있어야 합니다. " +
-                  "PC 소리와 상관없이 동작하므로 Discord를 음소거해 둬도 됩니다.")]
+                  "PC 소리와 상관없이 동작하므로 Discord를 음소거해 둬도 됩니다.\n" +
+                  "봇 만들기부터 자세한 설정 방법: github.com/Hyeseong1835/HearingAid/blob/main/docs/discord.md")]
 public class NetCordAudioSource : IAudioSource
 {
     /// <summary>SSRC(발신자)별 Opus 디코드 + 48kHz→16kHz 다운샘플 파이프라인.</summary>
@@ -100,9 +101,12 @@ public class NetCordAudioSource : IAudioSource
                 minSpeechMs = minSpeechMs,
             };
             this.pipeline = new SsrcPipeline(
-                cfg.lowPassCutoffHz, cfg.lowPassQ,
+                cfg.lowPassCutoffHz > 0 ? cfg.lowPassCutoffHz : UserConfig.DefaultLowPassCutoffHz,
+                cfg.lowPassQ > 0 ? cfg.lowPassQ : UserConfig.DefaultLowPassQ,
                 samples =>
                 {
+                    // 설정 화면에서 gain 칸을 비우면 0이 되므로, 0 이하는 "보정 없음(1배)"으로 본다.
+                    AudioEffect.Gain(samples, this.config.gain > 0 ? this.config.gain : 1f);
                     string speaker = string.IsNullOrEmpty(this.config.name)? this.userId.ToString() : this.config.name;
                     _ = this.channel.PushSamples(speaker, samples);
                 }
@@ -111,13 +115,17 @@ public class NetCordAudioSource : IAudioSource
     }
     public struct UserConfig
     {
+        public const float DefaultLowPassCutoffHz = 7000f;
+        public const float DefaultLowPassQ = 0.707f;
+
+        // 설정 파일에 필드가 빠져 있어도 0이 아니라 이 값으로 시작하게 한다(System.Text.Json은 이 생성자를 쓴다).
         public UserConfig() { }
 
         public ulong userId;
         public string? name;
-        public float lowPassCutoffHz;
-        public float lowPassQ;
-        public float gain;
+        public float lowPassCutoffHz = DefaultLowPassCutoffHz;
+        public float lowPassQ = DefaultLowPassQ;
+        public float gain = 1f;
     }
     
     
