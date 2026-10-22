@@ -44,18 +44,18 @@
   설정마다 설명이 붙어 있어 각 값이 무엇인지 화면에서 바로 알 수 있습니다.
 
   <div align="center">
-    <img src="docs/images/profile.png" alt="프로필 설정 화면" width="70%" />
-    <br><em style="font-size:80%">프로필 설정</em>
+    <img src="docs/images/profile.png" alt="설정 창의 프로필 페이지" width="70%" />
+    <br><em style="font-size:80%">설정 → 프로필</em>
   </div>
 
 - **🧠 모델 선택**
 
-  가벼운 `tiny`부터 정확한 `large-v3`까지 앱 안에서 받아 둘 수 있습니다.
+  가벼운 `tiny`부터 정확한 `large-v3`, 한국어 특화 `batisay-ko-turbo`까지 앱 안에서 받아 둘 수 있습니다.
   **프로필별**, **화자별**로 다른 모델을 지정할 수 있습니다.
 
   <div align="center">
-    <img src="docs/images/models.png" alt="모델 관리 화면" width="70%" />
-    <br><em style="font-size:80%">모델 관리</em>
+    <img src="docs/images/models.png" alt="설정 창의 모델 페이지" width="70%" />
+    <br><em style="font-size:80%">설정 → 모델</em>
   </div>
 
 - **⚡ GPU 가속**
@@ -82,7 +82,7 @@
 
 1. [Releases](https://github.com/Hyeseong1835/HearingAid/releases/latest)에서 `HearingAid-<버전>-win-x64.zip`을 받습니다.
 2. 원하는 폴더에 압축을 풀고 `HearingAid.exe`를 실행합니다.
-3. 처음 실행하면 음성 인식 모델을 고르는 창이 뜹니다. 잘 모르겠다면 **추천 모델 `large-v3-turbo`** (약 1.6GB)를 받으세요.
+3. 처음 실행하면 음성 인식 모델을 고르는 창이 뜹니다. 잘 모르겠다면 위쪽 금색 상자의 **★ 추천 모델 받기**를 누르세요. 한국어 특화 모델 `batisay-ko-turbo-q8_0`(약 874MB)을 받습니다. 한국어가 아닌 말을 받아 적으려면 `large-v3-turbo`를 받으세요.
 
 > [!TIP]
 > 설정을 앱 폴더에 저장하므로 `C:\Program Files`처럼 쓰기가 제한된 폴더는 피하세요. 바탕 화면이나 문서 폴더면 충분합니다.
@@ -106,7 +106,7 @@
 
 **첫 실행 화면에서 모델 다운로드가 안 돼요**
 
-모델은 `huggingface.co`에서 받습니다. 회사·학교 네트워크에서 막혀 있다면 다른 곳에서 `ggml-large-v3-turbo.bin`을 받아 앱 폴더의 `models\`에 넣고 실행하세요. 모델 목록은 [whisper.cpp 모델 저장소](https://huggingface.co/ggerganov/whisper.cpp/tree/main)에 있습니다.
+모델은 `huggingface.co`에서 받습니다. 회사·학교 네트워크에서 막혀 있다면 다른 곳에서 모델 파일(예: `ggml-batisay-ko-turbo-q8_0.bin`, `ggml-large-v3-turbo.bin`)을 받아 앱 폴더의 `models\`에 넣고 실행하세요. 모델은 [batisay-ko-turbo 저장소](https://huggingface.co/batiai/batisay-ko-turbo/tree/main)와 [whisper.cpp 모델 저장소](https://huggingface.co/ggerganov/whisper.cpp/tree/main)에 있습니다.
 
 **이전 버전에서 옮겨 오고 싶어요**
 
@@ -133,8 +133,10 @@
 
 | 모델 | 크기 | 추천 상황 |
 |---|---|---|
-| `large-v3-turbo` | 1.6GB | **추천.** GPU가 있는 PC. 정확하고 빠름 |
-| `large-v3-turbo-q5_0` | 574MB | 용량을 아끼고 싶을 때. 정확도는 거의 비슷 |
+| `batisay-ko-turbo-q8_0` | 874MB | **★ 추천.** 한국어 특화 모델 ([BatiAI 라이선스](https://huggingface.co/batiai/batisay-ko-turbo), 개인·비영리 무료) |
+| `batisay-ko-turbo-q5_0` | 574MB | 위 모델을 더 압축한 것. 용량을 아끼고 싶을 때 |
+| `large-v3-turbo` | 1.6GB | 한국어가 아닌 말을 받아 적을 때. 정확하고 빠름 |
+| `large-v3-turbo-q5_0` | 574MB | large-v3-turbo의 양자화. 정확도는 거의 비슷 |
 | `small`, `small-q5_1` | 190~490MB | GPU가 없거나 저사양 PC |
 | `tiny`, `base` | 60~150MB | 빠른 테스트용. 정확도 낮음 |
 | `large-v3` | 3.1GB | 가장 정확하지만 가장 느림 |
@@ -149,11 +151,13 @@
 |---|---|
 | **시작 / 정지** | 받아 적기를 시작하거나 멈춤 |
 | **프로필** (목록) | 사용할 프로필을 골라 바로 전환 (캡처를 정지한 상태에서) |
-| **⚙ 편집** | 프로필 추가·삭제, 오디오 소스·모델·화자별 모델 설정 |
-| **모델** | 모델 다운로드·삭제, 기본 모델 지정 |
+| **⚙ 편집** | 지금 쓰는 프로필을 설정 창에서 편집 (오디오 소스·모델·화자별 모델) |
 | **파형** | 들어오는 소리 크기를 실시간으로 표시. 받아 적기가 안 될 때 확인용 |
+| **모델** | 설정 창의 모델 페이지: 모델 다운로드·삭제, 기본 모델 지정 |
 | **내보내기** | TXT / CSV로 저장 |
+| **지우기** / **새로고침** | 화면의 목록을 비우기 / 받아 적은 기록으로 다시 채우기 |
 | **문서** | 설정 방법과 문제 해결 (F1) |
+| **설정** | 설정 창. 왼쪽에서 **프로필**(추가·삭제·편집), **모델**, **업데이트**(자동 확인·업데이트 채널)를 고름 |
 | **업데이트** | 새 버전 확인 및 설치 |
 
 ### 프로필 만들기
@@ -210,13 +214,21 @@ dotnet run
 <summary><strong>브랜치와 기여 방식</strong></summary>
 <br/>
 
-[GitHub Flow](https://docs.github.com/get-started/using-github/github-flow)를 따릅니다.
+작업용 `develop`과 배포용 `main` 두 브랜치를 씁니다. **`main`에 반영하는 것이 곧 배포**입니다.
 
-- `main`은 늘 빌드되는 상태로 유지하고, 직접 푸시하지 않습니다.
-- 작업은 `main`에서 짧은 브랜치를 만들어 하고 PR로 합칩니다. 이름은 `feat/…`, `fix/…`, `docs/…`, `ci/…`처럼 종류를 앞에 붙입니다.
-- PR마다 [CI](.github/workflows/ci.yml)가 Windows에서 빌드해 봅니다. 통과해야 합칠 수 있습니다.
-- PR은 squash merge로 합치고, 합친 브랜치는 지웁니다.
-- `main`에 합쳐질 때마다 [개발 빌드](.github/workflows/dev-build.yml)가 `dev` 프리릴리스로 올라갑니다. 앱의 업데이트 채널을 "최신 개발 버전"으로 고른 사용자만 받습니다.
+```
+feat/… ─PR(squash)→ develop ─PR(merge commit)→ main ─→ 개발 빌드 자동 배포
+```
+
+| 브랜치 | 역할 | 합칠 때 |
+|---|---|---|
+| `develop` (기본 브랜치) | 평소 작업을 합치는 곳 | CI 빌드 검사만. 배포 없음 |
+| `main` | 배포한 버전 | [개발 빌드](.github/workflows/dev-build.yml)가 `dev` 프리릴리스로 올라감. 앱의 업데이트 채널을 "최신 개발 버전"으로 고른 사용자만 받음 |
+
+- 작업은 `develop`에서 짧은 브랜치를 만들어 하고 PR로 합칩니다. 이름은 `feat/…`, `fix/…`, `docs/…`, `ci/…`처럼 종류를 앞에 붙입니다.
+- 기능 PR(`… → develop`)은 **squash merge**로 합치고, 합친 브랜치는 지웁니다.
+- 배포 PR(`develop → main`)은 **merge commit**으로 합칩니다. squash로 합치면 두 브랜치의 이력이 갈라져 다음 배포 때 충돌이 납니다.
+- 두 브랜치 모두 직접 푸시하지 않고, PR마다 [CI](.github/workflows/ci.yml)가 Windows에서 빌드해 봅니다. 통과해야 합칠 수 있습니다.
 
 </details>
 
@@ -224,8 +236,10 @@ dotnet run
 <summary><strong>릴리스 만들기</strong></summary>
 <br/>
 
-1. `HearingAid.csproj`의 `<Version>`을 올리는 PR을 `main`에 합칩니다.
-2. 아래 명령을 실행합니다. [gh CLI](https://cli.github.com) 로그인이 필요합니다.
+1. `HearingAid.csproj`의 `<Version>`을 올리는 PR을 `develop`에 합칩니다.
+2. `develop → main` 배포 PR을 merge commit으로 합칩니다(이때 개발 빌드도 함께 올라갑니다).
+3. `main`을 체크아웃한 상태에서 아래 명령을 실행합니다. [gh CLI](https://cli.github.com) 로그인이 필요합니다.
+   스크립트는 `main` 브랜치이고, 커밋하지 않은 변경이 없고, `origin/main`과 같은 커밋일 때만 진행하며, 태그를 빌드한 커밋에 붙입니다.
 
    ```powershell
    .\scripts\publish.ps1 -Publish
@@ -274,6 +288,7 @@ scripts/publish.ps1            릴리스 zip 생성 / GitHub 릴리스
 - [NAudio](https://github.com/naudio/NAudio) — Windows 오디오 캡처
 - [NetCord](https://github.com/NetCordDev/NetCord) — Discord 음성 수신
 - [ONNX Runtime](https://github.com/microsoft/onnxruntime)
+- [batisay-ko-turbo](https://huggingface.co/batiai/batisay-ko-turbo) — 한국어 특화 Whisper 모델 (선택 다운로드, BatiAI Community License v2)
 
 ## 📜 라이선스
 

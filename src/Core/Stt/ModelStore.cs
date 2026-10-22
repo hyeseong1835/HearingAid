@@ -1,18 +1,20 @@
 namespace HearingAid.Core.Stt;
 
 /// <summary>다운로드 가능한 Whisper ggml 모델 하나. Id는 파일 이름에서 "ggml-"와 ".bin"을 뗀 것
-/// (예: ggml-large-v3-turbo.bin → large-v3-turbo)이며, 설정 파일의 model/speakerModels 값으로 쓴다.</summary>
-public record WhisperModelInfo(string Id, long SizeBytes, string Description)
+/// (예: ggml-large-v3-turbo.bin → large-v3-turbo)이며, 설정 파일의 model/speakerModels 값으로 쓴다.
+/// Repo는 모델을 받을 huggingface 저장소 이름이다.</summary>
+public record WhisperModelInfo(string Id, long SizeBytes, string Description, string Repo = "ggerganov/whisper.cpp")
 {
     public string FileName => $"ggml-{Id}.bin";
-    public string DownloadUrl => $"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{FileName}";
+    public string DownloadUrl => $"https://huggingface.co/{Repo}/resolve/main/{FileName}";
 }
 
 /// <summary>모델 파일의 위치·목록·다운로드·삭제를 담당한다. 모델은 앱 폴더의 models/에 저장하고,
 /// 예전 배포본이 쓰던 whisper/ 폴더의 ggml-*.bin도 설치된 모델로 인식한다.</summary>
 public static class ModelStore
 {
-    /// <summary>huggingface ggerganov/whisper.cpp 저장소의 모델. 크기는 실제 파일 크기(바이트)다.</summary>
+    /// <summary>huggingface에서 받는 모델. 크기는 실제 파일 크기(바이트)다.
+    /// batisay-ko-*는 large-v3-turbo를 한국어로 파인튜닝한 모델이며 BatiAI Community License v2를 따른다(앱의 MIT와 별개).</summary>
     public static readonly IReadOnlyList<WhisperModelInfo> Catalog =
     [
         new("tiny",                 77_691_713, "가장 빠름, 정확도 낮음"),
@@ -25,11 +27,17 @@ public static class ModelStore
         new("large-v3-turbo-q8_0", 874_188_075, "large-v3-turbo 양자화(고품질)"),
         new("large-v3-q5_0",     1_081_140_203, "large-v3 양자화"),
         new("medium",            1_533_763_059, "정확도 높음, 느림"),
-        new("large-v3-turbo",    1_624_555_275, "추천. large-v3 수준 정확도에 훨씬 빠름"),
+        new("large-v3-turbo",    1_624_555_275, "large-v3 수준 정확도에 훨씬 빠름. 한국어 외 언어엔 이 모델"),
         new("large-v3",          3_095_033_483, "가장 정확, 가장 느림"),
+        new("batisay-ko-turbo-q5_0", 574_041_195, "한국어 특화 large-v3-turbo 양자화 (BatiAI 라이선스)", "batiai/batisay-ko-turbo"),
+        new("batisay-ko-turbo-q8_0", 874_188_075, "한국어 특화. 한국어 정확도가 가장 좋고 빠름 (BatiAI 라이선스)", "batiai/batisay-ko-turbo"),
     ];
 
-    public const string RecommendedId = "large-v3-turbo";
+    /// <summary>추천 모델. 앱의 기본 언어가 한국어라 한국어 특화 모델을 추천한다. q8_0은 원본(f16)과 정확도가 거의 같고 용량은 절반이다.
+    /// 모델 화면이 맨 위에 별표와 강조색으로 보여주고, 첫 실행 때 바로 받을 수 있는 버튼을 둔다.</summary>
+    public const string RecommendedId = "batisay-ko-turbo-q8_0";
+
+    public static WhisperModelInfo Recommended => FindInfo(RecommendedId)!;
 
     public static string ModelsDir => Path.Combine(AppContext.BaseDirectory, "models");
     static string LegacyDir => Path.Combine(AppContext.BaseDirectory, "whisper");

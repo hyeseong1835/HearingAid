@@ -226,17 +226,24 @@ public class TranscriberEngine : ITranscriber
         lock (_recodesLock) return this._recodes.ToList();
     }
 
-    /// <summary>index번째 오디오 소스에 바뀐 설정을 바로 반영한다. 편집 화면에서 그 자리의 종류를 바꿨다면
-    /// (아직 새 엔진을 만들기 전이므로) 다른 종류의 소스에 엉뚱한 값을 넣지 않도록 건너뛴다.</summary>
-    public void ApplyRuntimeOptions(int index, JsonObject updates)
+    /// <summary>편집 화면에서 저장한 오디오 소스 설정을 실행 중인 같은 소스에 바로 반영한다. 소스는 id로 찾으므로
+    /// 순서를 바꿔 저장해도 엉뚱한 소스에 들어가지 않는다. 엔진을 만든 설정에 id가 없으면(예전 파일) fallbackIndex
+    /// 자리를 쓰고, 이후에는 id로 찾도록 그 id를 엔진 설정에도 붙인다. 종류가 다르면(아직 새 엔진을 만들기 전) 건너뛴다.</summary>
+    public void ApplyRuntimeOptions(JsonObject updates, int fallbackIndex)
     {
+        var sources = Config.AudioSourceList;
+        string? id = Config.GetAudioSourceId(updates);
+        int index = id is null ? -1 : sources.ToList().FindIndex(s => Config.GetAudioSourceId(s) == id);
+        if (index < 0 && fallbackIndex >= 0 && fallbackIndex < sources.Count && Config.GetAudioSourceId(sources[fallbackIndex]) is null)
+            index = fallbackIndex;
         if (index < 0 || index >= _audioSources.Length) return;
-        if (!string.Equals(Config.GetAudioSourceType(Config.AudioSourceList[index]), Config.GetAudioSourceType(updates),
+        if (!string.Equals(Config.GetAudioSourceType(sources[index]), Config.GetAudioSourceType(updates),
                 StringComparison.OrdinalIgnoreCase))
             return;
 
         // 별명은 소스가 아니라 화면 표시용이므로 설정 객체에만 바로 반영한다(다음 발화부터 새 별명으로 표시).
-        JsonObject current = Config.AudioSourceList[index];
+        JsonObject current = sources[index];
+        if (id is not null) current[Config.IdKey] = id;
         if (updates[Config.AliasKey] is { } alias) current[Config.AliasKey] = alias.DeepClone();
         else current.Remove(Config.AliasKey);
 
