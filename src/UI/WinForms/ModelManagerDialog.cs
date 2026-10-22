@@ -12,7 +12,7 @@ public class ModelManagerDialog : Form
     public ModelManagerDialog(string baseConfigPath)
     {
         Text = "모델 선택";
-        ClientSize = new Size(744, 520);
+        ClientSize = new Size(840, 620); // 위쪽 추천 모델 상자가 들어가도 목록이 충분히 보이게
         StartPosition = FormStartPosition.CenterScreen; // 첫 실행엔 부모 창이 없다
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false; MinimizeBox = false;

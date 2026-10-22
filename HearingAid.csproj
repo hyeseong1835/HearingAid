@@ -10,7 +10,7 @@
     <AssemblyName>HearingAid</AssemblyName>
 
     <!-- 릴리스 태그(v<Version>)와 맞춘다. 앱은 이 값으로 GitHub 최신 릴리스와 비교해 업데이트를 판단한다. -->
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
     <IncludeSourceRevisionInIdentifier>false</IncludeSourceRevisionInIdentifier>
   </PropertyGroup>
 

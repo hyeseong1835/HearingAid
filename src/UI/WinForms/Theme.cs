@@ -195,7 +195,8 @@ static class Theme
     static readonly Color RowLine = Color.FromArgb(34, 34, 40);
 
     /// <summary>Details 보기의 칸 하나를 그린다. 시스템 기본 그리기(DrawDefault)는 한글 글꼴 대체 과정에서 일부 단어만
-    /// 다른 색으로 그려지는 문제가 있어 직접 그린다. 항목/하위 항목의 ForeColor와 Font를 그대로 따른다.</summary>
+    /// 다른 색으로 그려지는 문제가 있어 직접 그린다. 항목/하위 항목의 ForeColor, BackColor, Font를 그대로 따른다
+    /// (BackColor를 따로 정하지 않은 항목은 목록 배경색이다).</summary>
     public static void DrawCell(DrawListViewSubItemEventArgs e, ListView lv)
     {
         if (e.Item is null || e.SubItem is null) return;
@@ -205,12 +206,13 @@ static class Theme
             : e.Bounds;
         if (bounds.Width <= 0) return;
 
-        using (var back = new SolidBrush(e.Item.Selected ? SelectedRow : lv.BackColor))
+        bool useItemStyle = e.Item.UseItemStyleForSubItems;
+        Color backColor = e.Item.Selected ? SelectedRow : useItemStyle ? e.Item.BackColor : e.SubItem.BackColor;
+        using (var back = new SolidBrush(backColor))
             e.Graphics.FillRectangle(back, bounds);
         using (var line = new Pen(RowLine))
             e.Graphics.DrawLine(line, bounds.Left, bounds.Bottom - 1, bounds.Right, bounds.Bottom - 1);
 
-        bool useItemStyle = e.Item.UseItemStyleForSubItems;
         Font font = (useItemStyle ? e.Item.Font : e.SubItem.Font) ?? lv.Font;
         Color color = useItemStyle ? e.Item.ForeColor : e.SubItem.ForeColor;
         TextRenderer.DrawText(e.Graphics, e.SubItem.Text, font, Rectangle.Inflate(bounds, -10, 0), color,

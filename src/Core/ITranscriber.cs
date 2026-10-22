@@ -25,5 +25,5 @@ public interface ITranscriber : IDisposable
     ValueTask StartAsync();
     ValueTask StopAsync();
     IEnumerable<KeyValuePair<int, TranscriptRecode>> GetRecodes();
-    void ApplyRuntimeOptions(int index, JsonObject updates);
+    void ApplyRuntimeOptions(JsonObject updates, int fallbackIndex);
 }

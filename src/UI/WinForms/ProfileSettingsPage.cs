@@ -126,8 +126,8 @@ public class ProfileSettingsPage : UserControl
     {
         try
         {
-            var node = JsonNode.Parse(File.ReadAllText(ProfilePath(name))) as JsonObject;
-            return node is not null && Config.ReadAudioSourceList(node).Any(s => Config.GetAudioSourceType(s) is not null);
+            var node = Config.ReadJsonFile(ProfilePath(name));
+            return Config.ReadAudioSourceList(node).Any(s => Config.GetAudioSourceType(s) is not null);
         }
         catch { return false; } // 읽을 수 없는 파일도 고쳐야 할 대상으로 표시한다
     }
@@ -433,10 +433,14 @@ public class ProfileSettingsPage : UserControl
         if (selected?.Name is null) return;
 
         detailTitle.Text = selected.Name;
-        string path = ProfilePath(selected.Name);
-        currentPatch = File.Exists(path)
-            ? (JsonNode.Parse(File.ReadAllText(path)) as JsonObject ?? new JsonObject())
-            : new JsonObject();
+        string? loadError = null;
+        try { currentPatch = Config.ReadJsonFile(ProfilePath(selected.Name)); }
+        catch (Exception ex)
+        {
+            // 망가진 파일은 빈 프로필로 보여준다. 다시 설정해 저장하면 새 내용으로 덮어쓴다.
+            currentPatch = new JsonObject();
+            loadError = $"⚠ 프로필 파일을 읽지 못했습니다({ex.Message}). 다시 설정하고 저장하세요.";
+        }
 
         suppressEvents = true;
         try
@@ -466,6 +470,7 @@ public class ProfileSettingsPage : UserControl
         ValidateOtherJson();
         dirty = false;
         UpdateButtons();
+        if (loadError is not null) hint.Text = loadError;
         detailScroll.AutoScrollPosition = Point.Empty; // 다른 프로필을 고른 것이므로 맨 위부터 보여준다
     }
 
@@ -831,9 +836,9 @@ public class ProfileSettingsPage : UserControl
         }
 
         string path = ProfilePath(name);
-        var onDisk = File.Exists(path)
-            ? (JsonNode.Parse(File.ReadAllText(path)) as JsonObject ?? new JsonObject())
-            : new JsonObject();
+        JsonObject onDisk;
+        try { onDisk = Config.ReadJsonFile(path); }
+        catch { onDisk = new JsonObject(); } // 망가진 파일이면 화면의 내용으로 새로 쓴다
 
         var combined = new JsonObject();
         if (overrideModelCheck.Checked && modelCombo.SelectedItem is string model)
@@ -857,7 +862,10 @@ public class ProfileSettingsPage : UserControl
         foreach (var editor in editors)
         {
             JsonObject? original = editor.OriginIndex is int o && o < diskSources.Count ? diskSources[o] : null;
-            if (editor.BuildJson(original) is { } obj) savedSources.Add(obj);
+            if (editor.BuildJson(original) is not { } obj) continue;
+            // 순서를 바꿔도 실행 중인 소스·학습 값 저장이 같은 소스를 찾도록 고유 id를 붙인다(종류를 바꾸면 새 소스로 본다).
+            if (Config.GetAudioSourceId(obj) is null) obj[Config.IdKey] = Config.NewAudioSourceId();
+            savedSources.Add(obj);
         }
         if (savedSources.Count > 0)
             combined["audioSources"] = new JsonArray(savedSources.Select(o => (JsonNode)o.DeepClone()).ToArray());
@@ -868,7 +876,7 @@ public class ProfileSettingsPage : UserControl
                 combined[kv.Key] = kv.Value?.DeepClone();
 
         Directory.CreateDirectory(profilesDir);
-        File.WriteAllText(path, combined.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        Config.WriteJsonFile(path, combined);
         // 화면은 이미 저장한 내용 그대로이므로 다시 읽어 그리지 않는다(깜빡임·스크롤 초기화 방지).
         currentPatch = combined.DeepClone().AsObject();
         if (selected is not null)
@@ -877,6 +885,9 @@ public class ProfileSettingsPage : UserControl
             list.Invalidate(); // 프로필 목록의 경고 표시 갱신
         }
 
+        // 저장한 소스마다 저장 전의 원래 자리. 아래에서 OriginIndex를 새 자리로 바꾸기 전에 남겨 둔다.
+        var origins = editors.Where(e => e.SelectedType is not null).Select(e => e.OriginIndex).ToList();
+
         // 종류를 고르지 않아 빠진 편집기는 화면에서도 정리하고(하나는 남긴다), 남은 것은 저장된 자리를 기억한다.
         var kept = editors.Where(e => e.SelectedType is not null).ToList();
         if (kept.Count > 0)
@@ -884,15 +895,29 @@ public class ProfileSettingsPage : UserControl
                 RemoveSourceEditor(dropped);
         for (int i = 0; i < kept.Count; i++) kept[i].OriginIndex = i;
 
-        // 지금 저장한 프로필이 활성 프로필이면, 재시작 없이도 실행 중인 오디오 소스가
-        // 고친 값(예: knownUsers 이름)을 바로 반영하도록 알린다.
+        // 지금 저장한 프로필이 메인 창의 엔진이 쓰는 프로필이면, 재시작 없이도 실행 중인 오디오 소스가
+        // 고친 값(예: knownUsers 이름)을 바로 반영하도록 알린다. 소스는 id로 찾으므로 순서를 바꿔도 안전하다.
         if (string.Equals(name, engine.Config.EffectiveProfileName, StringComparison.OrdinalIgnoreCase))
             for (int i = 0; i < savedSources.Count; i++)
-                engine.ApplyRuntimeOptions(i, savedSources[i]);
+                // 원래 자리는 엔진을 만든 파일에서의 자리다. id가 없는 예전 파일일 때만 쓰인다.
+                engine.ApplyRuntimeOptions(savedSources[i], origins[i] ?? -1);
 
         dirty = false;
         UpdateButtons();
-        hint.Text = $"'{name}' 저장됨";
+
+        // "이 프로필 사용"으로 이미 만들어 둔 새 엔진이 이 프로필이면, 저장한 내용으로 다시 만든다.
+        // 그대로 두면 창을 닫을 때 저장하기 전 설정으로 만든 엔진이 메인 창에 들어간다(아직 시작 전이라 바꿔도 안전하다).
+        if (NewEngine is not null
+            && string.Equals(name, NewEngine.Config.EffectiveProfileName, StringComparison.OrdinalIgnoreCase))
+        {
+            NewEngine.Dispose();
+            NewEngine = Config.BuildEngine(baseConfigPath, profilesDir, name);
+            hint.Text = $"'{name}' 저장됨. 창을 닫으면 적용됩니다.";
+        }
+        else if (IsActive(name))
+            hint.Text = $"'{name}' 저장됨. 오디오 소스 종류·추가·순서·모델 변경은 '변경 적용'을 눌러야 반영됩니다.";
+        else
+            hint.Text = $"'{name}' 저장됨";
         return true;
     }
 
@@ -948,7 +973,12 @@ public class ProfileSettingsPage : UserControl
         if (dlg.ShowDialog(this) != DialogResult.OK || dlg.ProfileName is not { } name) return;
 
         Directory.CreateDirectory(profilesDir);
-        File.WriteAllText(ProfilePath(name), "{}");
+        try { Config.WriteJsonFile(ProfilePath(name), new JsonObject()); }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "프로필을 만들 수 없습니다", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
         selected = new ProfileItem(name, false);
         RefreshList();
     }
