@@ -35,7 +35,7 @@ public class ProfileSettingsForm : Form
     readonly DataGridViewComboBoxColumn speakerModelColumn = new();
     readonly Panel speakerButtonsPanel = new();
     readonly Panel overrideHeaderPanel = new();
-    readonly CheckBox overrideAudioSourceCheck = new();
+    readonly Label audioSourceTitle = new();
     readonly ComboBox typeCombo = new();
     readonly Label audioSourceDescLabel = new();
     readonly Label otherJsonLabel = new();
@@ -61,10 +61,15 @@ public class ProfileSettingsForm : Form
 
     sealed class ProfileItem
     {
-        public readonly string? Name; // null => "(기본값)"
+        public readonly string? Name;
         public readonly bool Active;
-        public ProfileItem(string? name, bool active) { Name = name; Active = active; }
-        public override string ToString() => $"{(Active ? "● " : "   ")}{Name ?? "(기본값)"}";
+        /// <summary>저장된 오디오 소스가 있는지. 없으면 사이드바에 경고 표시를 한다. 저장할 때 갱신된다.</summary>
+        public bool HasAudioSource;
+        public ProfileItem(string? name, bool active, bool hasAudioSource = true)
+        {
+            Name = name; Active = active; HasAudioSource = hasAudioSource;
+        }
+        public override string ToString() => Name ?? "";
     }
 
     public ProfileSettingsForm(ITranscriber engine, string baseConfigPath, string profilesDir)
@@ -84,6 +89,16 @@ public class ProfileSettingsForm : Form
     /// engine.Config는 이전 프로필을 가리키므로, 이 창에서 만든 NewEngine을 우선한다.</summary>
     string? ActiveProfileName => (NewEngine ?? engine).Config.EffectiveProfileName;
 
+    bool ProfileHasAudioSource(string name)
+    {
+        try
+        {
+            var node = JsonNode.Parse(File.ReadAllText(ProfilePath(name))) as JsonObject;
+            return StringValue((node?["audioSource"] as JsonObject)?["type"]) is not null;
+        }
+        catch { return false; } // 읽을 수 없는 파일도 고쳐야 할 대상으로 표시한다
+    }
+
     bool IsActive(string? name) => name is not null && string.Equals(name, ActiveProfileName, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>사이드바 항목: 선택된 항목은 강조색 막대, 사용 중인 프로필은 초록 점으로 표시한다.</summary>
@@ -102,9 +117,15 @@ public class ProfileSettingsForm : Form
             using (var dot = new SolidBrush(Theme.Success))
                 e.Graphics.FillEllipse(dot, e.Bounds.Left + 12, e.Bounds.Top + e.Bounds.Height / 2 - 4, 8, 8);
 
-        var textBounds = new Rectangle(e.Bounds.Left + 28, e.Bounds.Top, e.Bounds.Width - 32, e.Bounds.Height);
-        TextRenderer.DrawText(e.Graphics, item.Name ?? "(기본값)", list.Font, textBounds,
-            item.Name is null ? Theme.SubText : Theme.Text,
+        // 오디오 소스가 없는 프로필은 오른쪽에 경고 표시를 붙여, 무엇을 먼저 고쳐야 하는지 보이게 한다.
+        int warnWidth = item.HasAudioSource ? 0 : 24;
+        if (!item.HasAudioSource)
+            TextRenderer.DrawText(e.Graphics, "⚠", list.Font,
+                new Rectangle(e.Bounds.Right - 28, e.Bounds.Top, 24, e.Bounds.Height), Color.Goldenrod,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
+
+        var textBounds = new Rectangle(e.Bounds.Left + 28, e.Bounds.Top, e.Bounds.Width - 32 - warnWidth, e.Bounds.Height);
+        TextRenderer.DrawText(e.Graphics, item.Name ?? "", list.Font, textBounds, Theme.Text,
             TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
 
@@ -151,7 +172,7 @@ public class ProfileSettingsForm : Form
         baseNoteLabel.Margin = new Padding(12, 0, 12, 0);
         baseNoteLabel.ForeColor = Color.Silver;
         baseNoteLabel.Text = "아직 프로필이 없습니다. 왼쪽 아래 '+ 추가'로 만들어 보세요.\n" +
-                             "프로필이 없으면 기본 설정(PC 소리 전체)으로 받아 적습니다.";
+                             "프로필마다 무엇을 들을지(오디오 소스)를 정해야 받아 적기를 시작할 수 있습니다.";
         baseNoteLabel.MaximumSize = new Size(540, 0);
 
         // --- 모델 재정의 ---
@@ -202,19 +223,14 @@ public class ProfileSettingsForm : Form
         speakerButtonsPanel.Margin = new Padding(0, 4, 0, 8);
         speakerButtonsPanel.Controls.Add(addSpeakersBtn);
 
-        overrideAudioSourceCheck.Text = "오디오 소스 재정의";
-        overrideAudioSourceCheck.AutoSize = true;
-        overrideAudioSourceCheck.Location = new Point(12, 4);
-        overrideAudioSourceCheck.CheckedChanged += (s, e) =>
-        {
-            if (suppressEvents) return;
-            typeCombo.Enabled = overrideAudioSourceCheck.Checked;
-            RebuildAudioSourceRows(seedFromPatch: true);
-            UpdateButtons();
-        };
+        // 오디오 소스는 프로필마다 반드시 정한다(기본값에서 물려받지 않는다).
+        audioSourceTitle.Text = "오디오 소스";
+        audioSourceTitle.AutoSize = true;
+        audioSourceTitle.Font = new Font("Segoe UI", 10, FontStyle.Bold);
+        audioSourceTitle.Location = new Point(12, 6);
 
         typeCombo.DropDownStyle = ComboBoxStyle.DropDownList;
-        typeCombo.Location = new Point(160, 1);
+        typeCombo.Location = new Point(120, 1);
         typeCombo.Width = 320;
         foreach (var n in Config.GetAvailableAudioSourceTypeNames()) typeCombo.Items.Add(n);
         // 항목 값은 설정 파일에 쓰는 type 이름 그대로 두고, 화면에는 알아보기 쉬운 이름을 보여준다.
@@ -240,7 +256,7 @@ public class ProfileSettingsForm : Form
 
         overrideHeaderPanel.Size = new Size(560, 34);
         overrideHeaderPanel.Margin = new Padding(0, 0, 0, 4);
-        overrideHeaderPanel.Controls.Add(overrideAudioSourceCheck);
+        overrideHeaderPanel.Controls.Add(audioSourceTitle);
         overrideHeaderPanel.Controls.Add(typeCombo);
 
         otherJsonLabel.AutoSize = true;
@@ -318,9 +334,9 @@ public class ProfileSettingsForm : Form
         {
             list.Items.Clear();
             foreach (var n in Config.ListProfileNames(profilesDir))
-                list.Items.Add(new ProfileItem(n, IsActive(n)));
+                list.Items.Add(new ProfileItem(n, IsActive(n), ProfileHasAudioSource(n)));
 
-            current.Text = $"사용 중인 프로필: {ActiveProfileName ?? "없음 (기본 설정)"}";
+            current.Text = $"사용 중인 프로필: {ActiveProfileName ?? "없음"}";
 
             // 처음 열 때는 지금 사용 중인 프로필을, 이후에는 보던 프로필을 그대로 선택한다.
             var items = list.Items.Cast<ProfileItem>().ToList();
@@ -371,18 +387,14 @@ public class ProfileSettingsForm : Form
             ? (JsonNode.Parse(File.ReadAllText(path)) as JsonObject ?? new JsonObject())
             : new JsonObject();
 
-        bool hasOverride = currentPatch.ContainsKey("audioSource");
-        JsonObject? seed = currentPatch["audioSource"] as JsonObject ?? engine.Config.AudioSource;
-        string? seedType = seed is not null && seed.TryGetPropertyValue("type", out var t) && t is not null
-            ? t.GetValue<string>()
-            : (typeCombo.Items.Count > 0 ? (string)typeCombo.Items[0]! : null);
+        // 저장된 오디오 소스가 없으면 아무것도 고르지 않은 상태로 두고 경고를 보여준다.
+        string? seedType = StringValue((currentPatch["audioSource"] as JsonObject)?["type"]);
 
         suppressEvents = true;
         try
         {
-            overrideAudioSourceCheck.Checked = hasOverride;
-            typeCombo.Enabled = hasOverride;
-            typeCombo.SelectedItem = seedType;
+            typeCombo.SelectedIndex = seedType is null ? -1
+                : typeCombo.Items.Cast<string>().ToList().FindIndex(n => n.Equals(seedType, StringComparison.OrdinalIgnoreCase));
 
             LoadModelOverrides();
 
@@ -458,11 +470,9 @@ public class ProfileSettingsForm : Form
         var oldRows = currentRows.ToList();
         currentRows.Clear();
 
-        if (overrideAudioSourceCheck.Checked && typeCombo.SelectedItem is string type)
+        if (typeCombo.SelectedItem is string type)
         {
-            JsonObject? seed = seedFromPatch
-                ? (currentPatch["audioSource"] as JsonObject ?? engine.Config.AudioSource)
-                : null;
+            JsonObject? seed = seedFromPatch ? currentPatch["audioSource"] as JsonObject : null;
 
             try
             {
@@ -505,16 +515,9 @@ public class ProfileSettingsForm : Form
 
             int index = contentPanel.Controls.IndexOf(overrideHeaderPanel) + 1;
 
-            audioSourceDescLabel.Text = AudioSourceDescription();
-            if (audioSourceDescLabel.Text.Length > 0)
-            {
-                if (!contentPanel.Controls.Contains(audioSourceDescLabel)) contentPanel.Controls.Add(audioSourceDescLabel);
-                contentPanel.Controls.SetChildIndex(audioSourceDescLabel, index++);
-            }
-            else
-            {
-                contentPanel.Controls.Remove(audioSourceDescLabel);
-            }
+            UpdateAudioSourceDescription();
+            if (!contentPanel.Controls.Contains(audioSourceDescLabel)) contentPanel.Controls.Add(audioSourceDescLabel);
+            contentPanel.Controls.SetChildIndex(audioSourceDescLabel, index++);
 
             foreach (var row in currentRows)
             {
@@ -528,8 +531,20 @@ public class ProfileSettingsForm : Form
         detailScroll.AutoScrollPosition = new Point(-scroll.X, -scroll.Y);
     }
 
-    string AudioSourceDescription() =>
-        typeCombo.SelectedItem is string type ? Config.GetAudioSourceInfo(type)?.Description ?? "" : "";
+    /// <summary>고른 오디오 소스의 설명을, 고르지 않았으면 먼저 고르라는 경고를 보여준다.</summary>
+    void UpdateAudioSourceDescription()
+    {
+        if (typeCombo.SelectedItem is string type)
+        {
+            audioSourceDescLabel.Text = Config.GetAudioSourceInfo(type)?.Description ?? "";
+            audioSourceDescLabel.ForeColor = Theme.SubText;
+        }
+        else
+        {
+            audioSourceDescLabel.Text = "⚠ 오디오 소스를 먼저 고르세요. 무엇을 듣고 받아 적을지 정해야 이 프로필을 사용할 수 있습니다.";
+            audioSourceDescLabel.ForeColor = Color.Goldenrod;
+        }
+    }
 
     void RenderContentPanel()
     {
@@ -542,14 +557,15 @@ public class ProfileSettingsForm : Form
             return;
         }
 
+        // 오디오 소스가 프로필의 핵심이므로 맨 위에, 모델 관련 설정은 그 아래에 둔다.
+        contentPanel.Controls.Add(overrideHeaderPanel);
+        UpdateAudioSourceDescription();
+        contentPanel.Controls.Add(audioSourceDescLabel);
+        foreach (var row in currentRows) contentPanel.Controls.Add(row);
         contentPanel.Controls.Add(modelHeaderPanel);
         contentPanel.Controls.Add(speakerModelLabel);
         contentPanel.Controls.Add(speakerGrid);
         contentPanel.Controls.Add(speakerButtonsPanel);
-        contentPanel.Controls.Add(overrideHeaderPanel);
-        audioSourceDescLabel.Text = AudioSourceDescription();
-        if (audioSourceDescLabel.Text.Length > 0) contentPanel.Controls.Add(audioSourceDescLabel);
-        foreach (var row in currentRows) contentPanel.Controls.Add(row);
         contentPanel.Controls.Add(otherJsonLabel);
         contentPanel.Controls.Add(otherJsonBox);
         contentPanel.Controls.Add(jsonErrorLabel);
@@ -576,10 +592,16 @@ public class ProfileSettingsForm : Form
         saveBtn.Enabled = hasSelection && jsonOk;
         removeBtn.Enabled = hasSelection && !isActive;
 
+        bool hasAudioSource = typeCombo.SelectedItem is string;
         if (engine.IsRunning)
         {
             applyBtn.Enabled = false;
             hint.Text = "캡처를 정지한 뒤 프로필을 바꿀 수 있습니다.";
+        }
+        else if (hasSelection && !hasAudioSource)
+        {
+            applyBtn.Enabled = false;
+            hint.Text = "⚠ 오디오 소스를 고르면 이 프로필을 사용할 수 있습니다.";
         }
         else
         {
@@ -616,15 +638,21 @@ public class ProfileSettingsForm : Form
         if (speakerModels.Count > 0)
             combined["speakerModels"] = speakerModels;
 
-        if (overrideAudioSourceCheck.Checked && typeCombo.SelectedItem is string type)
+        if (typeCombo.SelectedItem is string type)
         {
-            // 디스크의 audioSource를 베이스로 삼는다 — 그래야 다이얼로그가 열려 있는 동안
-            // 백그라운드에서 실시간 학습·저장된 knownUsers 같은 값이 유실되지 않는다.
-            var asObj = onDisk["audioSource"] is JsonObject existing ? existing.DeepClone().AsObject() : new JsonObject();
+            // 같은 종류면 디스크의 audioSource를 베이스로 삼는다 — 그래야 다이얼로그가 열려 있는 동안
+            // 백그라운드에서 실시간 학습·저장된 값이 유실되지 않는다. 종류가 바뀌었으면 이전 소스의 값(예: 봇 토큰)이
+            // 남지 않도록 새로 만든다.
+            bool sameType = onDisk["audioSource"] is JsonObject existing
+                && string.Equals(StringValue(existing["type"]), type, StringComparison.OrdinalIgnoreCase);
+            var asObj = sameType ? onDisk["audioSource"]!.DeepClone().AsObject() : new JsonObject();
             asObj["type"] = type;
             foreach (var row in currentRows)
-                if (!Equals(row.Value, row.Spec.DefaultValue))
-                    asObj[row.Spec.Name] = JsonSerializer.SerializeToNode(row.Value, row.Spec.ClrType, Config.AudioSourceValueJsonOptions);
+            {
+                // 기본값으로 되돌린 항목은 파일에서 지운다(남겨 두면 "기본값으로 재설정"이 저장되지 않는다).
+                if (Equals(row.Value, row.Spec.DefaultValue)) asObj.Remove(row.Spec.Name);
+                else asObj[row.Spec.Name] = JsonSerializer.SerializeToNode(row.Value, row.Spec.ClrType, Config.AudioSourceValueJsonOptions);
+            }
             combined["audioSource"] = asObj;
         }
 
@@ -638,6 +666,11 @@ public class ProfileSettingsForm : Form
         // 화면은 이미 저장한 내용 그대로이므로 다시 읽어 그리지 않는다(깜빡임·스크롤 초기화 방지).
         currentPatch = combined.DeepClone().AsObject();
         hint.Text = $"'{name}' 저장됨";
+        if (selected is not null)
+        {
+            selected.HasAudioSource = combined["audioSource"] is not null;
+            list.Invalidate(); // 사이드바의 경고 표시 갱신
+        }
 
         // 지금 저장한 프로필이 활성 프로필이면, 재시작 없이도 실행 중인 오디오 소스가
         // 고친 값(예: knownUsers 이름)을 바로 반영하도록 알린다.

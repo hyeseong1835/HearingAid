@@ -84,6 +84,21 @@ public class MainForm : Form
         toolbar.Controls.Add(left);
         var toolbarLine = new Panel { Dock = DockStyle.Top, Height = 1, BackColor = Theme.Border };
 
+        // --- 설정 경고 바: 오디오 소스가 없거나 만들 수 없을 때만 보인다 ---
+        warningBar.Dock = DockStyle.Top;
+        warningBar.Height = 44;
+        warningBar.BackColor = Color.FromArgb(58, 46, 18);
+        warningBar.Padding = new Padding(14, 6, 10, 6);
+        warningLabel.Dock = DockStyle.Fill;
+        warningLabel.TextAlign = ContentAlignment.MiddleLeft;
+        warningLabel.ForeColor = Color.FromArgb(240, 200, 110);
+        warningLabel.AutoEllipsis = true;
+        var warningBtn = new Button { Text = "⚙ 오디오 소스 설정", Dock = DockStyle.Right, Width = 150 };
+        warningBtn.Click += (s, e) => OpenProfileSettings();
+        warningBar.Controls.Add(warningLabel);
+        warningBar.Controls.Add(warningBtn);
+        warningBar.Visible = false;
+
         // --- 받아 적은 내용 목록 ---
         list.Dock = DockStyle.Fill;
         list.View = View.Details;
@@ -140,6 +155,7 @@ public class MainForm : Form
         var statusLine = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = Theme.Border };
 
         Controls.Add(list);
+        Controls.Add(warningBar);
         Controls.Add(toolbarLine);
         Controls.Add(toolbar);
         Controls.Add(statusLine);
@@ -151,6 +167,8 @@ public class MainForm : Form
     }
 
     readonly Label emptyHint = new();
+    readonly Panel warningBar = new();
+    readonly Label warningLabel = new();
 
     static Button ToolButton(string text, EventHandler onClick)
     {
@@ -206,6 +224,8 @@ public class MainForm : Form
     {
         UpdateToggleButton(engine.IsRunning);
         UpdateProfileButton();
+        warningBar.Visible = engine.SetupWarning is not null;
+        warningLabel.Text = $"⚠  {engine.SetupWarning}";
         list.Columns[SpeakerColumn].Width = engine.SpeakerRecognition ? 130 : 0;
         FitTextColumn();
     }
@@ -364,6 +384,12 @@ public class MainForm : Form
         {
             _ = engine.StopAsync();
             UpdateToggleButton(running: false);
+        }
+        else if (engine.SetupWarning is not null)
+        {
+            // 오디오 소스가 없으면 시작할 수 없으므로 바로 설정 화면으로 안내한다.
+            status.Text = engine.SetupWarning;
+            OpenProfileSettings();
         }
         else
         {

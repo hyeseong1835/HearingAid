@@ -251,12 +251,37 @@ public class Config
 
     /// <summary>프로필을 로드하고 그 설정으로 오디오 소스와 TranscriberEngine을 새로 만든다.
     /// Program.cs의 최초 기동과 ProfileSettingsForm의 프로필 전환이 이 로직을 공유한다.</summary>
+    /// <summary>오디오 소스가 설정되지 않았거나 만들 수 없어도 예외를 던지지 않는다 — 앱이 켜지지 않는 대신,
+    /// 오디오 소스 없이 엔진을 만들고 SetupWarning에 이유를 담아 UI가 사용자에게 설정을 안내하게 한다.</summary>
     public static TranscriberEngine BuildEngine(string baseConfigPath, string profilesDir, string? profileName)
     {
         Config cfg = LoadEffective(baseConfigPath, profilesDir, profileName);
-        IAudioSource source = cfg.CreateConfiguredAudioSources();
-        return new TranscriberEngine(cfg, [source]);
+
+        if (!cfg.HasAudioSource)
+            return new TranscriberEngine(cfg, [],
+                cfg.EffectiveProfileName is not null
+                    ? $"'{cfg.EffectiveProfileName}' 프로필에 오디오 소스가 없습니다. '⚙ 편집'에서 오디오 소스를 고르세요."
+                : ListProfileNames(profilesDir).Count > 0
+                    ? "사용할 프로필을 고르세요. 프로필마다 무엇을 들을지(오디오 소스)가 정해져 있습니다."
+                    : "프로필이 없습니다. '⚙ 편집'에서 프로필을 만들고 오디오 소스를 고르세요.");
+
+        try
+        {
+            return new TranscriberEngine(cfg, [cfg.CreateConfiguredAudioSources()]);
+        }
+        catch (Exception ex)
+        {
+            // 리플렉션 생성자 호출 실패는 TargetInvocationException으로 감싸져 오므로 안쪽 메시지를 보여준다.
+            string reason = (ex as TargetInvocationException)?.InnerException?.Message ?? ex.Message;
+            return new TranscriberEngine(cfg, [], $"오디오 소스를 준비하지 못했습니다: {reason}");
+        }
     }
+
+    /// <summary>audioSource.type이 지정돼 있는지.</summary>
+    [JsonIgnore]
+    public bool HasAudioSource =>
+        AudioSource is not null && AudioSource.TryGetPropertyValue("type", out var t)
+        && t is JsonValue v && v.TryGetValue(out string? type) && !string.IsNullOrWhiteSpace(type);
 
     /// <summary>this.AudioSource에 담긴 type/파라미터로 실제 IAudioSource 인스턴스를 만든다.</summary>
     public IAudioSource CreateConfiguredAudioSources()

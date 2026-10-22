@@ -85,11 +85,15 @@ public class TranscriberEngine : ITranscriber
             channel.samplesAvailableHandler -= engine._onSamplesHandler;
             channel.Dispose();
         };
-    public TranscriberEngine(Config cfg, IAudioSource[] audioSource)
+    /// <summary>오디오 소스를 준비하지 못한 이유(없으면 null). 이 값이 있으면 시작할 수 없다.</summary>
+    public string? SetupWarning { get; }
+
+    public TranscriberEngine(Config cfg, IAudioSource[] audioSource, string? setupWarning = null)
     {
         Config = cfg;
         this._audioSources = audioSource;
         this._recodes = new Dictionary<int, TranscriptRecode>();
+        SetupWarning = setupWarning;
     }
 
     #region 생명주기
@@ -97,6 +101,7 @@ public class TranscriberEngine : ITranscriber
     public async ValueTask StartAsync()
     {
         if (IsRunning) return;
+        if (SetupWarning is not null) throw new InvalidOperationException(SetupWarning);
 
         // 모델 로드는 수 초 걸리므로 UI 스레드를 막지 않게 백그라운드에서 한다.
         await Task.Run(LoadModels);
