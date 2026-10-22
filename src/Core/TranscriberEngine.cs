@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
 
 using HearingAid.Core.Stt;
@@ -16,9 +17,15 @@ public class TranscriberEngine : ITranscriber
     public Config Config { get; }
     public bool IsRunning { get; private set; }
     public bool SpeakerRecognition => _audioSources.Any(s => s.SpeakerRecognition);
+    public int AudioSourceCount => _audioSources.Length;
 
     readonly IAudioSource[] _audioSources;
     readonly Dictionary<IAudioSource, Action> _settingsChangedHandlers = new();
+    readonly Dictionary<IAudioSource, IAudioSource.SetAudioSourceStateAction> _statusHandlers = new();
+
+    /// <summary>채널 → 그 채널을 만든 오디오 소스의 순번. 발화 기록에 어느 소스에서 왔는지 남기는 데 쓴다.
+    /// 채널은 오디오 스레드에서 생기고 없어지므로 동시성 사전을 쓴다.</summary>
+    readonly ConcurrentDictionary<AudioChannel, int> _channelSources = new();
 
     /// <summary>모델 id → 로드된 모델. StartAsync에서만 채우고, 그 뒤엔 읽기만 한다.</summary>
     readonly Dictionary<string, WhisperModel> _whisperModels = new(StringComparer.OrdinalIgnoreCase);
@@ -41,7 +48,8 @@ public class TranscriberEngine : ITranscriber
                 recodeId,
                 new TranscriptRecode(
                     DateTime.Now, 
-                    speaker, null
+                    speaker, null,
+                    engine._channelSources.TryGetValue(channel, out int sourceIndex) ? sourceIndex : 0
                 )
             );
             WhisperModel? whisperModel = engine.ResolveModel(speaker);
@@ -72,6 +80,7 @@ public class TranscriberEngine : ITranscriber
         {
             TranscriberEngine engine = (TranscriberEngine)param;
 
+            engine._channelSources[channel] = Array.IndexOf(engine._audioSources, source);
             channel.samplesAvailableHandlerParam = param;
             channel.samplesAvailableHandler += engine._onSamplesHandler;
             channel.rawSamplesAvailable += samples => engine.RawSamplesAvailable?.Invoke(samples);
@@ -81,6 +90,7 @@ public class TranscriberEngine : ITranscriber
         {
             TranscriberEngine engine = (TranscriberEngine)param;
 
+            engine._channelSources.TryRemove(channel, out _);
             channel.samplesAvailableHandlerParam = null;
             channel.samplesAvailableHandler -= engine._onSamplesHandler;
             channel.Dispose();
@@ -106,19 +116,25 @@ public class TranscriberEngine : ITranscriber
         // 모델 로드는 수 초 걸리므로 UI 스레드를 막지 않게 백그라운드에서 한다.
         await Task.Run(LoadModels);
 
-        foreach (IAudioSource audioSource in _audioSources)
+        for (int i = 0; i < _audioSources.Length; i++)
         {
-            audioSource.AudioChannelCreatedParam = this;
-            audioSource.AudioChannelRemovedParam = this;
-            audioSource.AudioChannelCreated += _createAudioChannelEventHandler;
-            audioSource.AudioChannelRemoved += _removeAudioChannelEventHandler;
-            audioSource.SetStatus += OnAudioSourceStatus;
-
-            Action settingsChangedHandler = () => OnAudioSourceSettingsChanged(audioSource);
-            _settingsChangedHandlers[audioSource] = settingsChangedHandler;
-            audioSource.SettingsChanged += settingsChangedHandler;
-
-            await audioSource.StartAsync();
+            IAudioSource audioSource = _audioSources[i];
+            Attach(audioSource, i);
+            try
+            {
+                await audioSource.StartAsync();
+            }
+            catch (Exception ex)
+            {
+                // 하나라도 시작하지 못하면 앞서 시작한 소스까지 모두 멈춰, 일부만 도는 어중간한 상태를 남기지 않는다.
+                for (int j = 0; j <= i; j++)
+                {
+                    try { await _audioSources[j].StopAsync(); } catch { }
+                    Detach(_audioSources[j]);
+                }
+                if (_audioSources.Length == 1) throw;
+                throw new Exception($"오디오 소스 {i + 1}({Config.GetAudioSourceAlias(i)}): {ex.Message}", ex);
+            }
 
             // knownUsers처럼 시작 전에 이미 채널을 갖고 있던 오디오 소스는 AudioChannelCreated가
             // 발생하지 않으므로, 아직 안 엮인 채널을 여기서 직접 훑어 연결한다.
@@ -136,24 +152,45 @@ public class TranscriberEngine : ITranscriber
         foreach (IAudioSource audioSource in _audioSources)
         {
             await audioSource.StopAsync();
-
-            audioSource.AudioChannelCreated -= _createAudioChannelEventHandler;
-            audioSource.AudioChannelRemoved -= _removeAudioChannelEventHandler;
-            audioSource.SetStatus -= OnAudioSourceStatus;
-
-            if (_settingsChangedHandlers.Remove(audioSource, out Action? settingsChangedHandler))
-                audioSource.SettingsChanged -= settingsChangedHandler;
+            Detach(audioSource);
         }
 
         SetStatusAction?.Invoke("정지됨");
     }
-    void OnAudioSourceStatus(string msg) => SetStatusAction?.Invoke(msg);
 
-    void OnAudioSourceSettingsChanged(IAudioSource source)
+    void Attach(IAudioSource audioSource, int index)
+    {
+        audioSource.AudioChannelCreatedParam = this;
+        audioSource.AudioChannelRemovedParam = this;
+        audioSource.AudioChannelCreated += _createAudioChannelEventHandler;
+        audioSource.AudioChannelRemoved += _removeAudioChannelEventHandler;
+
+        // 소스가 여럿이면 상태 표시줄에서 어느 소스의 소식인지 알 수 있게 별명을 붙인다.
+        string prefix = _audioSources.Length > 1 ? $"[{Config.GetAudioSourceAlias(index)}] " : "";
+        IAudioSource.SetAudioSourceStateAction statusHandler = msg => SetStatusAction?.Invoke(prefix + msg);
+        _statusHandlers[audioSource] = statusHandler;
+        audioSource.SetStatus += statusHandler;
+
+        Action settingsChangedHandler = () => OnAudioSourceSettingsChanged(audioSource, index);
+        _settingsChangedHandlers[audioSource] = settingsChangedHandler;
+        audioSource.SettingsChanged += settingsChangedHandler;
+    }
+
+    void Detach(IAudioSource audioSource)
+    {
+        audioSource.AudioChannelCreated -= _createAudioChannelEventHandler;
+        audioSource.AudioChannelRemoved -= _removeAudioChannelEventHandler;
+        if (_statusHandlers.Remove(audioSource, out var statusHandler))
+            audioSource.SetStatus -= statusHandler;
+        if (_settingsChangedHandlers.Remove(audioSource, out Action? settingsChangedHandler))
+            audioSource.SettingsChanged -= settingsChangedHandler;
+    }
+
+    void OnAudioSourceSettingsChanged(IAudioSource source, int index)
     {
         JsonObject? updates = source.ExportRuntimeOptions();
         if (updates is not null)
-            Config.PersistAudioSourceOptions(updates);
+            Config.PersistAudioSourceOptions(index, updates);
     }
 
     public void Dispose()
@@ -187,10 +224,21 @@ public class TranscriberEngine : ITranscriber
         lock (_recodesLock) return this._recodes.ToList();
     }
 
-    public void ApplyRuntimeOptions(JsonObject updates)
+    /// <summary>index번째 오디오 소스에 바뀐 설정을 바로 반영한다. 편집 화면에서 그 자리의 종류를 바꿨다면
+    /// (아직 새 엔진을 만들기 전이므로) 다른 종류의 소스에 엉뚱한 값을 넣지 않도록 건너뛴다.</summary>
+    public void ApplyRuntimeOptions(int index, JsonObject updates)
     {
-        foreach (IAudioSource audioSource in _audioSources)
-            audioSource.ApplyRuntimeOptions(updates);
+        if (index < 0 || index >= _audioSources.Length) return;
+        if (!string.Equals(Config.GetAudioSourceType(Config.AudioSourceList[index]), Config.GetAudioSourceType(updates),
+                StringComparison.OrdinalIgnoreCase))
+            return;
+
+        // 별명은 소스가 아니라 화면 표시용이므로 설정 객체에만 바로 반영한다(다음 발화부터 새 별명으로 표시).
+        JsonObject current = Config.AudioSourceList[index];
+        if (updates[Config.AliasKey] is { } alias) current[Config.AliasKey] = alias.DeepClone();
+        else current.Remove(Config.AliasKey);
+
+        _audioSources[index].ApplyRuntimeOptions(updates);
     }
     public TranscriptRecode GetRecode(int id)
     {

@@ -120,15 +120,19 @@ public class MainForm : Form
         list.DrawSubItem += (s, e) => Theme.DrawCell(e, list);
 
         list.Columns.Add("시간", 96);
+        list.Columns.Add("소스", 0);
         list.Columns.Add("화자", 130);
         list.Columns.Add("내용", 600);
 
         // 텍스트 열이 창 크기에 맞게 늘어나도록
         list.Resize += (s, e) => FitTextColumn();
-        // 화자를 구분하지 않는 소스에서는 화자 열을 폭 0으로 숨긴다. 사용자가 경계를 끌어 다시 펼치지 못하게 막는다.
+        // 화자를 구분하지 않는 소스에서는 화자 열을, 소스가 하나뿐이면 소스 열을 폭 0으로 숨긴다.
+        // 사용자가 경계를 끌어 다시 펼치지 못하게 막는다.
         list.ColumnWidthChanging += (s, e) =>
         {
-            if (e.ColumnIndex == SpeakerColumn && e.NewWidth != 0 && engine is not null && !engine.SpeakerRecognition)
+            if (e.NewWidth == 0 || engine is null) return;
+            if ((e.ColumnIndex == SpeakerColumn && !engine.SpeakerRecognition)
+                || (e.ColumnIndex == SourceColumn && !MultipleSources))
                 e.Cancel = true;
         };
 
@@ -230,16 +234,22 @@ public class MainForm : Form
         UpdateProfileButton();
         warningBar.Visible = engine.SetupWarning is not null;
         warningLabel.Text = $"⚠  {engine.SetupWarning}";
+        list.Columns[SourceColumn].Width = MultipleSources ? 140 : 0;
         list.Columns[SpeakerColumn].Width = engine.SpeakerRecognition ? 130 : 0;
         FitTextColumn();
     }
 
-    const int SpeakerColumn = 1;
+    const int SourceColumn = 1;
+    const int SpeakerColumn = 2;
+    const int TextColumn = 3;
+
+    bool MultipleSources => engine.AudioSourceCount > 1;
 
     void FitTextColumn()
     {
-        int w = list.ClientSize.Width - list.Columns[0].Width - list.Columns[SpeakerColumn].Width - 4;
-        if (w > 100) list.Columns[2].Width = w;
+        int w = list.ClientSize.Width - list.Columns[0].Width - list.Columns[SourceColumn].Width
+                - list.Columns[SpeakerColumn].Width - 4;
+        if (w > 100) list.Columns[TextColumn].Width = w;
     }
 
     /// <summary>프로필 콤보박스를 profiles/ 목록으로 다시 채우고 지금 쓰는 프로필을 선택한다.
@@ -444,6 +454,10 @@ public class MainForm : Form
             ForeColor = Theme.SubText,
             UseItemStyleForSubItems = false
         };
+        // 소스는 별명으로 보여주고, 같은 소스는 같은 색으로 칠해 어느 소스의 말인지 한눈에 구분되게 한다.
+        var sourceSub = item.SubItems.Add(engine.Config.GetAudioSourceAlias(recode.source));
+        sourceSub.ForeColor = SpeakerPalette[recode.source % SpeakerPalette.Length];
+        sourceSub.Font = new Font(list.Font, FontStyle.Bold);
         var speakerSub = item.SubItems.Add(hasSpeaker ? recode.speaker : "-");
         speakerSub.ForeColor = hasSpeaker ? SpeakerColor(recode.speaker!) : Theme.SubText;
         speakerSub.Font = new Font(list.Font, FontStyle.Bold);
@@ -464,8 +478,8 @@ public class MainForm : Form
     {
         if (!pendingItems.TryGetValue(id, out var existing)) return;
 
-        existing.SubItems[2].Text = newRecode.text ?? "";
-        existing.SubItems[2].ForeColor = Theme.Text;
+        existing.SubItems[TextColumn].Text = newRecode.text ?? "";
+        existing.SubItems[TextColumn].ForeColor = Theme.Text;
         existing.ToolTipText = newRecode.text;
 
         if (autoScroll.Checked)
@@ -496,23 +510,40 @@ public class MainForm : Form
         else ExportCsv(saveDlg.FileName);
     }
 
+    /// <summary>내보낼 열. 화면과 같이, 소스가 하나뿐이면 소스 열을, 화자를 구분하지 않으면 화자 열을 뺀다.</summary>
+    (bool Sources, bool Speakers) ExportColumns => (MultipleSources, engine.SpeakerRecognition);
+
     void ExportTxt(string path)
     {
-        bool speakers = engine.SpeakerRecognition;
+        var (sources, speakers) = ExportColumns;
         using var w = new StreamWriter(path) { NewLine = "\n" };
         foreach (ListViewItem it in list.Items)
-            w.WriteLine(speakers ? $"{it.SubItems[1].Text}: {it.SubItems[2].Text}" : it.SubItems[2].Text);
+        {
+            string prefix = (sources ? $"[{it.SubItems[SourceColumn].Text}] " : "")
+                          + (speakers ? $"{it.SubItems[SpeakerColumn].Text}: " : "");
+            w.WriteLine(prefix + it.SubItems[TextColumn].Text);
+        }
     }
 
     void ExportCsv(string path)
     {
-        bool speakers = engine.SpeakerRecognition;
+        var (sources, speakers) = ExportColumns;
         using var w = new StreamWriter(path, false, new System.Text.UTF8Encoding(true));
-        w.WriteLine(speakers ? "시간,화자,텍스트" : "시간,텍스트");
+
+        var header = new List<string> { "시간" };
+        if (sources) header.Add("소스");
+        if (speakers) header.Add("화자");
+        header.Add("텍스트");
+        w.WriteLine(string.Join(",", header));
+
         foreach (ListViewItem it in list.Items)
-            w.WriteLine(speakers
-                ? $"{CsvField(it.Text)},{CsvField(it.SubItems[1].Text)},{CsvField(it.SubItems[2].Text)}"
-                : $"{CsvField(it.Text)},{CsvField(it.SubItems[2].Text)}");
+        {
+            var fields = new List<string> { it.Text };
+            if (sources) fields.Add(it.SubItems[SourceColumn].Text);
+            if (speakers) fields.Add(it.SubItems[SpeakerColumn].Text);
+            fields.Add(it.SubItems[TextColumn].Text);
+            w.WriteLine(string.Join(",", fields.Select(CsvField)));
+        }
     }
 
     static string CsvField(string value) =>
