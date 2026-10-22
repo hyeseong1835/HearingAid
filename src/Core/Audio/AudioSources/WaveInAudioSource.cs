@@ -10,7 +10,7 @@ namespace HearingAid.Core.Audio;
     DisplayName = "마이크 등 입력 장치",
     Description = "마이크처럼 PC로 들어오는 소리를 받아 적습니다. 옆에 있는 사람의 말을 들을 때 쓰세요.\n" +
                   "VB-CABLE 같은 가상 오디오 케이블로 소리를 돌려 받을 때도 이것을 고르고, " +
-                  "deviceKeyword에 장치 이름 일부(예: 마이크, CABLE Output)를 적습니다.")]
+                  "deviceKeyword에서 장치를 고르세요. 비워 두면 Windows 기본 입력 장치를 씁니다.")]
 public class WaveInAudioSource : IAudioSource
 {
     const int SampleRate = AudioPipeline.SampleRate;
@@ -29,14 +29,14 @@ public class WaveInAudioSource : IAudioSource
     public bool IsRunning { get; private set; }
     public bool SpeakerRecognition => false;
 
-    readonly string deviceKeyword;
+    readonly string? deviceKeyword;
     readonly float gain;
     readonly int bufferMilliseconds;
     WaveIn? waveIn;
 
     public WaveInAudioSource(
-        [Description("입력 장치 이름에 포함되어야 하는 문자열 (부분 일치, 대소문자 무시). 예: 마이크, CABLE Output. 장치 이름은 Windows 소리 설정 > 입력에서 확인")]
-        string deviceKeyword,
+        [InputDevicePicker, Description("사용할 입력 장치. 목록에서 고르거나 이름 일부를 적음 (부분 일치, 대소문자 무시). 비워두면 Windows 기본 입력 장치 사용")]
+        string? deviceKeyword = null,
         [Description("입력 증폭 배율 (1.0 = 원본, 2.0 = 2배 증폭 등. 클리핑 방지를 위해 [-1, 1] 범위로 clamp됨)")]
         float gain = 1.0f,
         [Description(AudioPipeline.AutoGainDescription)]
@@ -71,16 +71,20 @@ public class WaveInAudioSource : IAudioSource
     {
         if (IsRunning) return ValueTask.CompletedTask;
 
-        int device = FindDevice(deviceKeyword);
-        if (device < 0)
+        if (WaveIn.DeviceCount == 0)
+            throw new Exception("입력 장치가 없습니다. 마이크가 연결돼 있고 Windows 소리 설정에서 켜져 있는지 확인하세요.");
+
+        // 비워 두면 WAVE_MAPPER(-1): Windows 기본 입력 장치를 따른다.
+        int device = string.IsNullOrWhiteSpace(deviceKeyword) ? -1 : FindDevice(deviceKeyword);
+        if (device == -2)
         {
-            var names = new StringBuilder("장치를 찾을 수 없습니다. 목록:");
+            var names = new StringBuilder($"입력 장치 '{deviceKeyword}'를 찾을 수 없습니다. 프로필 편집에서 장치를 다시 고르세요.\n\n현재 입력 장치:");
             for (int i = 0; i < WaveIn.DeviceCount; i++)
-                names.Append($"\n  {i}: {WaveIn.GetCapabilities(i).ProductName}");
+                names.Append($"\n  • {WaveIn.GetCapabilities(i).ProductName}");
             throw new Exception(names.ToString());
         }
 
-        Description = WaveIn.GetCapabilities(device).ProductName;
+        Description = device < 0 ? "기본 입력 장치" : WaveIn.GetCapabilities(device).ProductName;
 
         waveIn = new WaveIn
         {
@@ -112,7 +116,7 @@ public class WaveInAudioSource : IAudioSource
         for (int i = 0; i < WaveIn.DeviceCount; i++)
             if (WaveIn.GetCapabilities(i).ProductName.Contains(keyword, StringComparison.OrdinalIgnoreCase))
                 return i;
-        return -1;
+        return -2; // -1은 WAVE_MAPPER라 "못 찾음"은 따로 둔다
     }
 
     void OnData(object? sender, WaveInEventArgs e)

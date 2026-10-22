@@ -396,7 +396,13 @@ public class MainForm : Form
             toggleBtn.Enabled = false;
             UpdateToggleButton(running: false, starting: true);
             try { await engine.StartAsync(); UpdateToggleButton(running: true); }
-            catch (Exception ex) { status.Text = $"오류: {ex.Message}"; UpdateToggleButton(running: false); }
+            catch (Exception ex)
+            {
+                // 장치 목록처럼 여러 줄인 오류는 한 줄짜리 상태 표시줄에서 잘리므로 전문은 대화상자로 보여준다.
+                status.Text = $"오류: {ex.Message.Split('\n')[0]}";
+                UpdateToggleButton(running: false);
+                MessageBox.Show(this, ex.Message, "시작할 수 없습니다", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
             finally { toggleBtn.Enabled = true; }
         }
     }

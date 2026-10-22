@@ -84,10 +84,24 @@ class AudioSourceSettingRow : Panel
 
     Control CreateInputControl(Type t)
     {
-        if (Spec.IsProcessPicker)
+        if (Spec.Picker is { } source)
         {
             var picker = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Width = 320, Font = BodyFont };
-            foreach (var name in AudioSessionProcesses.ListActiveAudioProcessNames()) picker.Items.Add(name);
+            void FillSuggestions()
+            {
+                // Items.Clear()가 입력된 글자를 지울 수 있어, 그 사이의 TextChanged는 값 변경으로 보지 않는다.
+                string text = picker.Text;
+                bool wasSuppressed = suppressCommit;
+                suppressCommit = true;
+                picker.Items.Clear();
+                try { foreach (var name in source.GetSuggestions()) picker.Items.Add(name); }
+                catch { } // 장치 조회 실패는 무시하고 직접 입력하게 둔다
+                picker.Text = text;
+                suppressCommit = wasSuppressed;
+            }
+            FillSuggestions();
+            // 설정 창을 연 뒤 꽂은 마이크나 새로 켠 프로그램도 보이도록 펼칠 때마다 다시 조회한다.
+            picker.DropDown += (s, e) => FillSuggestions();
             picker.TextChanged += (s, e) => Commit(picker.Text);
             return picker;
         }
@@ -258,7 +272,7 @@ class AudioSourceSettingRow : Panel
             switch (input)
             {
                 case CheckBox cb: cb.Checked = v is bool b && b; break;
-                case ComboBox combo when Spec.IsProcessPicker: combo.Text = v?.ToString() ?? ""; break;
+                case ComboBox combo when Spec.Picker is not null: combo.Text = v?.ToString() ?? ""; break;
                 case ComboBox combo: combo.SelectedItem = v; break;
                 case NumericUpDown nud: nud.Value = Convert.ToDecimal(v ?? 0); break;
                 case DataGridView grid: PopulateGrid(grid, v); break;
