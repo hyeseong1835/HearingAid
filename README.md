@@ -210,13 +210,21 @@ dotnet run
 <summary><strong>브랜치와 기여 방식</strong></summary>
 <br/>
 
-[GitHub Flow](https://docs.github.com/get-started/using-github/github-flow)를 따릅니다.
+작업용 `develop`과 배포용 `main` 두 브랜치를 씁니다. **`main`에 반영하는 것이 곧 배포**입니다.
 
-- `main`은 늘 빌드되는 상태로 유지하고, 직접 푸시하지 않습니다.
-- 작업은 `main`에서 짧은 브랜치를 만들어 하고 PR로 합칩니다. 이름은 `feat/…`, `fix/…`, `docs/…`, `ci/…`처럼 종류를 앞에 붙입니다.
-- PR마다 [CI](.github/workflows/ci.yml)가 Windows에서 빌드해 봅니다. 통과해야 합칠 수 있습니다.
-- PR은 squash merge로 합치고, 합친 브랜치는 지웁니다.
-- `main`에 합쳐질 때마다 [개발 빌드](.github/workflows/dev-build.yml)가 `dev` 프리릴리스로 올라갑니다. 앱의 업데이트 채널을 "최신 개발 버전"으로 고른 사용자만 받습니다.
+```
+feat/… ─PR(squash)→ develop ─PR(merge commit)→ main ─→ 개발 빌드 자동 배포
+```
+
+| 브랜치 | 역할 | 합칠 때 |
+|---|---|---|
+| `develop` (기본 브랜치) | 평소 작업을 합치는 곳 | CI 빌드 검사만. 배포 없음 |
+| `main` | 배포한 버전 | [개발 빌드](.github/workflows/dev-build.yml)가 `dev` 프리릴리스로 올라감. 앱의 업데이트 채널을 "최신 개발 버전"으로 고른 사용자만 받음 |
+
+- 작업은 `develop`에서 짧은 브랜치를 만들어 하고 PR로 합칩니다. 이름은 `feat/…`, `fix/…`, `docs/…`, `ci/…`처럼 종류를 앞에 붙입니다.
+- 기능 PR(`… → develop`)은 **squash merge**로 합치고, 합친 브랜치는 지웁니다.
+- 배포 PR(`develop → main`)은 **merge commit**으로 합칩니다. squash로 합치면 두 브랜치의 이력이 갈라져 다음 배포 때 충돌이 납니다.
+- 두 브랜치 모두 직접 푸시하지 않고, PR마다 [CI](.github/workflows/ci.yml)가 Windows에서 빌드해 봅니다. 통과해야 합칠 수 있습니다.
 
 </details>
 
@@ -224,8 +232,10 @@ dotnet run
 <summary><strong>릴리스 만들기</strong></summary>
 <br/>
 
-1. `HearingAid.csproj`의 `<Version>`을 올리는 PR을 `main`에 합칩니다.
-2. 아래 명령을 실행합니다. [gh CLI](https://cli.github.com) 로그인이 필요합니다.
+1. `HearingAid.csproj`의 `<Version>`을 올리는 PR을 `develop`에 합칩니다.
+2. `develop → main` 배포 PR을 merge commit으로 합칩니다(이때 개발 빌드도 함께 올라갑니다).
+3. `main`을 체크아웃한 상태에서 아래 명령을 실행합니다. [gh CLI](https://cli.github.com) 로그인이 필요합니다.
+   스크립트는 지금 작업 폴더의 코드를 빌드하므로, 다른 브랜치에서 실행하면 태그와 내용물이 어긋납니다.
 
    ```powershell
    .\scripts\publish.ps1 -Publish
