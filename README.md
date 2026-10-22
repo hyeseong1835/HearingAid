@@ -138,6 +138,7 @@
 | `small`, `small-q5_1` | 190~490MB | GPU가 없거나 저사양 PC |
 | `tiny`, `base` | 60~150MB | 빠른 테스트용. 정확도 낮음 |
 | `large-v3` | 3.1GB | 가장 정확하지만 가장 느림 |
+| `batisay-ko-turbo-q5_0` | 574MB | 한국어 특화 모델 ([BatiAI 라이선스](https://huggingface.co/batiai/batisay-ko-turbo), 개인·비영리 무료) |
 
 모델은 언제든 메인 화면의 **모델** 버튼에서 추가하거나 지울 수 있습니다.
 
@@ -284,6 +285,7 @@ scripts/publish.ps1            릴리스 zip 생성 / GitHub 릴리스
 - [NAudio](https://github.com/naudio/NAudio) — Windows 오디오 캡처
 - [NetCord](https://github.com/NetCordDev/NetCord) — Discord 음성 수신
 - [ONNX Runtime](https://github.com/microsoft/onnxruntime)
+- [batisay-ko-turbo](https://huggingface.co/batiai/batisay-ko-turbo) — 한국어 특화 Whisper 모델 (선택 다운로드, BatiAI Community License v2)
 
 ## 📜 라이선스
 

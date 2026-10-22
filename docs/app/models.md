@@ -14,9 +14,11 @@ HearingAid는 [Whisper](https://github.com/ggerganov/whisper.cpp) 음성 인식 
 | `medium`, `medium-q5_0` | 540MB~1.5GB | small보다 정확, large-v3-turbo보다 느림 |
 | `tiny`, `base`, `base-q5_1` | 60~150MB | 빠른 테스트용. 정확도 낮음 |
 | `large-v3`, `large-v3-q5_0` | 1.1~3.1GB | 가장 정확하지만 가장 느림 |
+| `batisay-ko-turbo-q5_0`, `batisay-ko-turbo-q8_0` | 574~874MB | 한국어만 들을 때. large-v3-turbo를 한국어로 추가 학습한 모델 |
 
 - 이름에 `q5`, `q8`이 붙은 모델은 **양자화** 모델입니다. 같은 모델을 압축해 용량과 메모리를 줄인 것으로, 정확도는 조금만 떨어집니다.
 - 큰 모델일수록 정확하지만 느리고 메모리를 많이 씁니다. 말한 뒤 글이 나오기까지 몇 초 이상 걸린다면 더 작은 모델을 써 보세요.
+- `batisay-ko-*` 모델은 [BatiAI](https://huggingface.co/batiai/batisay-ko-turbo)가 만든 모델로, HearingAid(MIT)와 별개인 **BatiAI Community License v2**를 따릅니다. 개인·비영리 용도는 무료이고, 외부 서비스 제공·재판매 등 상업적 사용은 BatiAI의 허락이 필요합니다.
 
 ## 모델 관리
 
