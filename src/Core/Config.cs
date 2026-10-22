@@ -298,7 +298,8 @@ public class Config
                 p.Name!, p.ParameterType,
                 p.GetCustomAttribute<DescriptionAttribute>()?.Description ?? "",
                 GetEffectiveDefault(p),
-                p.GetCustomAttribute<RunningProcessPickerAttribute>() is not null);
+                p.GetCustomAttribute<RunningProcessPickerAttribute>() is not null,
+                p.GetCustomAttribute<PasswordPropertyTextAttribute>()?.Password == true);
             return new AudioSourceSettingValue(settingSpec, ResolveConstructorArg(p, spec.Options));
         }).ToList();
     }

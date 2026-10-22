@@ -175,7 +175,7 @@ public class NetCordAudioSource : IAudioSource
     }
 
     public NetCordAudioSource(
-        [Description("Discord 봇 토큰. discord.com/developers/applications 에서 봇을 만들고 Bot 탭의 Reset Token으로 발급. 남에게 보여주지 말 것")]
+        [PasswordPropertyText(true), Description("Discord 봇 토큰.discord.com/developers/applications 에서 봇을 만들고 Bot 탭의 Reset Token으로 발급. 남에게 보여주지 말 것")]
         string token,
         
         [Description("따라갈 사용자(보통 본인)의 Discord ID(숫자). Discord 설정 > 고급 > 개발자 모드를 켠 뒤 사용자를 우클릭 > 'ID 복사'")]

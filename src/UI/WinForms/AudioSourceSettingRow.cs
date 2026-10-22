@@ -55,9 +55,24 @@ class AudioSourceSettingRow : Panel
         input.Location = new Point(14, descLabel.Bottom + 6);
         Controls.Add(input);
 
+        int nextX = input.Right + 12;
+        if (Spec.IsSecret && input is TextBox secretBox)
+        {
+            // 화면 공유·녹화 중에 토큰이 그대로 보이지 않도록 기본은 가리고, 필요할 때만 잠깐 보이게 한다.
+            secretBox.UseSystemPasswordChar = true;
+            var reveal = new CheckBox
+            {
+                Text = "보기", AutoSize = true, Font = BodyFont,
+                Location = new Point(nextX, input.Top + 2)
+            };
+            reveal.CheckedChanged += (s, e) => secretBox.UseSystemPasswordChar = !reveal.Checked;
+            Controls.Add(reveal);
+            nextX = reveal.Right + 12;
+        }
+
         resetLink.Text = "기본값으로 재설정";
         resetLink.Font = BodyFont;
-        resetLink.Location = new Point(input.Right + 12, input.Top + 3);
+        resetLink.Location = new Point(nextX, input.Top + 3);
         resetLink.AutoSize = true;
         resetLink.LinkColor = Color.FromArgb(0, 122, 204);
         resetLink.LinkClicked += (s, e) => ApplyValue(Spec.DefaultValue);
