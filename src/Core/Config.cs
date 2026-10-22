@@ -303,7 +303,7 @@ public class Config
     }
 
     /// <summary>프로필을 로드하고 그 설정으로 오디오 소스와 TranscriberEngine을 새로 만든다.
-    /// Program.cs의 최초 기동과 ProfileSettingsForm의 프로필 전환이 이 로직을 공유한다.
+    /// Program.cs의 최초 기동과 설정 창(ProfileSettingsPage)의 프로필 전환이 이 로직을 공유한다.
     /// 오디오 소스가 설정되지 않았거나 만들 수 없어도 예외를 던지지 않는다 — 앱이 켜지지 않는 대신,
     /// 오디오 소스 없이 엔진을 만들고 SetupWarning에 이유를 담아 UI가 사용자에게 설정을 안내하게 한다.</summary>
     public static TranscriberEngine BuildEngine(string baseConfigPath, string profilesDir, string? profileName)
@@ -368,7 +368,7 @@ public class Config
 
     /// <summary>주어진 spec에 대해, 그 오디오 소스 타입의 생성자 매개변수마다
     /// 메타데이터(설명/기본값)와 현재 유효값(옵션→기본값 순)을 계산해 반환한다.
-    /// UI(ProfileSettingsForm)와 CreateAudioSource가 이 우선순위 로직을 공유한다.</summary>
+    /// UI(ProfileSettingsPage)와 CreateAudioSource가 이 우선순위 로직을 공유한다.</summary>
     public IReadOnlyList<AudioSourceSettingValue> GetSettingValues(AudioSourceSpec spec)
     {
         var type = FindAudioSourceType(spec.Type);

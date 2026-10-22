@@ -6,10 +6,10 @@ using HearingAid.Core.Stt;
 
 namespace HearingAid;
 
-/// <summary>프로필(profiles/&lt;이름&gt;.json) 목록을 관리하고, 선택한 프로필을 적용해
+/// <summary>설정 창의 '프로필' 페이지. 프로필(profiles/&lt;이름&gt;.json) 목록을 관리하고, 선택한 프로필을 적용해
 /// Config/IAudioSource/TranscriberEngine을 통째로 새로 만든다. 실제 교체는 MainForm이 수행한다
-/// (이 폼은 NewEngine에 결과만 담아둔다).</summary>
-public class ProfileSettingsForm : Form
+/// (이 페이지는 NewEngine에 결과만 담아둔다).</summary>
+public class ProfileSettingsPage : UserControl
 {
     readonly ITranscriber engine;
     readonly string baseConfigPath;
@@ -61,7 +61,6 @@ public class ProfileSettingsForm : Form
     readonly Label hint = new();
     readonly Button saveBtn = new();
     readonly Button applyBtn = new();
-    readonly Button closeBtn = new();
 
     ProfileItem? selected;
     JsonObject currentPatch = new();
@@ -87,15 +86,34 @@ public class ProfileSettingsForm : Form
         public override string ToString() => Name ?? "";
     }
 
-    public ProfileSettingsForm(ITranscriber engine, string baseConfigPath, string profilesDir)
+    /// <summary>처음 보일 때 고를 프로필(없으면 사용 중인 프로필)과, 보이자마자 새 프로필 만들기를 띄울지.</summary>
+    readonly string? initialProfile;
+    readonly bool startWithNewProfile;
+
+    public ProfileSettingsPage(ITranscriber engine, string baseConfigPath, string profilesDir,
+        string? initialProfile = null, bool startWithNewProfile = false)
     {
         this.engine = engine;
         this.baseConfigPath = baseConfigPath;
         this.profilesDir = profilesDir;
+        this.initialProfile = initialProfile;
+        this.startWithNewProfile = startWithNewProfile;
         BuildUi();
-        Theme.Apply(this);
         Theme.StyleButton(saveBtn, Theme.ButtonKind.Primary);
-        RefreshList();
+    }
+
+    /// <summary>목록은 페이지가 처음 보일 때 읽는다. 그때는 설정 창 안에서 크기가 정해져 있어
+    /// 오디오 소스 편집기 폭을 제대로 잡을 수 있다(생성자 시점에는 기본 크기라 좁게 잡힌다).</summary>
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        // 설정 창의 배치가 끝난 다음 메시지에서 읽는다(OnLoad 시점에는 아직 크기가 확정되지 않았을 수 있다).
+        BeginInvoke(() =>
+        {
+            if (initialProfile is not null) selected = new ProfileItem(initialProfile, false);
+            RefreshList();
+            if (startWithNewProfile) AddNew();
+        });
     }
 
     string ProfilePath(string name) => Path.Combine(profilesDir, name + ".json");
@@ -143,11 +161,7 @@ public class ProfileSettingsForm : Form
 
     void BuildUi()
     {
-        Text = "프로필 편집";
-        Width = 860; Height = 700;
-        StartPosition = FormStartPosition.CenterParent;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false; MinimizeBox = false;
+        Dock = DockStyle.Fill;
         Font = new Font("Segoe UI", 10);
         BackColor = Color.FromArgb(24, 24, 28);
         ForeColor = Color.Gainsboro;
@@ -349,10 +363,7 @@ public class ProfileSettingsForm : Form
         var buttons = new Panel { Dock = DockStyle.Top, Height = 44 };
         saveBtn.Text = "저장"; saveBtn.Width = 90; saveBtn.Height = 30; saveBtn.Location = new Point(4, 6);
         saveBtn.Click += (s, e) => Save();
-        closeBtn.Text = "닫기"; closeBtn.Width = 80; closeBtn.Height = 30; closeBtn.Location = new Point(100, 6);
-        closeBtn.Click += (s, e) => Close();
         buttons.Controls.Add(saveBtn);
-        buttons.Controls.Add(closeBtn);
 
         var bottom = new Panel { Dock = DockStyle.Bottom, Height = 74, BackColor = Theme.Surface, Padding = new Padding(8, 0, 8, 0) };
         bottom.Controls.Add(buttons);
@@ -894,7 +905,7 @@ public class ProfileSettingsForm : Form
 
     /// <summary>저장하지 않은 변경이 있으면 저장할지 묻는다. 계속 진행해도 되면 true(저장했거나 버리기로 함),
     /// 취소했거나 저장에 실패했으면 false.</summary>
-    bool ConfirmUnsavedChanges()
+    public bool ConfirmUnsavedChanges()
     {
         if (!dirty || selected?.Name is not { } name) return true;
         var answer = MessageBox.Show(this, $"'{name}' 프로필에 저장하지 않은 변경이 있습니다.\n저장할까요?",
@@ -907,11 +918,7 @@ public class ProfileSettingsForm : Form
         };
     }
 
-    protected override void OnFormClosing(FormClosingEventArgs e)
-    {
-        if (!ConfirmUnsavedChanges()) e.Cancel = true;
-        base.OnFormClosing(e);
-    }
+
 
     async Task ApplyAsync()
     {
