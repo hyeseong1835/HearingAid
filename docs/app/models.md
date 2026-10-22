@@ -7,14 +7,16 @@ HearingAid는 [Whisper](https://github.com/ggerganov/whisper.cpp) 음성 인식 
 
 | 모델 | 크기 | 추천 상황 |
 |---|---|---|
-| `large-v3-turbo` | 1.6GB | **추천.** 그래픽 카드가 있는 PC. 정확하고 빠름 |
-| `large-v3-turbo-q5_0` | 574MB | 용량을 아끼고 싶을 때. 정확도는 거의 비슷 |
-| `large-v3-turbo-q8_0` | 874MB | q5_0보다 조금 더 정확한 양자화 |
+| `batisay-ko-turbo-q8_0` | 874MB | **★ 추천.** 한국어를 받아 적을 때. large-v3-turbo를 한국어로 추가 학습한 모델 |
+| `batisay-ko-turbo-q5_0` | 574MB | 위 모델을 더 압축한 것. 용량을 아끼고 싶을 때 |
+| `large-v3-turbo` | 1.6GB | 한국어가 아닌 말을 받아 적을 때. 정확하고 빠름 |
+| `large-v3-turbo-q5_0`, `large-v3-turbo-q8_0` | 574~874MB | large-v3-turbo의 양자화. 정확도는 거의 비슷 |
 | `small`, `small-q5_1` | 190~490MB | 그래픽 카드가 없거나 저사양 PC |
 | `medium`, `medium-q5_0` | 540MB~1.5GB | small보다 정확, large-v3-turbo보다 느림 |
 | `tiny`, `base`, `base-q5_1` | 60~150MB | 빠른 테스트용. 정확도 낮음 |
 | `large-v3`, `large-v3-q5_0` | 1.1~3.1GB | 가장 정확하지만 가장 느림 |
-| `batisay-ko-turbo-q5_0`, `batisay-ko-turbo-q8_0` | 574~874MB | 한국어만 들을 때. large-v3-turbo를 한국어로 추가 학습한 모델 |
+
+모델 화면에서는 추천 모델이 위쪽 금색 상자와 목록 맨 위(★, 금색 줄)에 표시됩니다. 상자의 **★ 추천 모델 받기**로 바로 받을 수 있습니다.
 
 - 이름에 `q5`, `q8`이 붙은 모델은 **양자화** 모델입니다. 같은 모델을 압축해 용량과 메모리를 줄인 것으로, 정확도는 조금만 떨어집니다.
 - 큰 모델일수록 정확하지만 느리고 메모리를 많이 씁니다. 말한 뒤 글이 나오기까지 몇 초 이상 걸린다면 더 작은 모델을 써 보세요.

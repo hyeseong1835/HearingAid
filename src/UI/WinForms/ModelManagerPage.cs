@@ -4,7 +4,9 @@ using HearingAid.Core.Stt;
 namespace HearingAid;
 
 /// <summary>설정 창의 '모델' 페이지. Whisper 모델 다운로드/삭제와 기본 모델(appsettings.json의 model) 지정을 한다.
-/// 첫 실행(설치된 모델 없음) 때는 ModelManagerDialog가 이 페이지를 안내문과 함께 띄운다.</summary>
+/// 첫 실행(설치된 모델 없음) 때는 ModelManagerDialog가 이 페이지를 안내문과 함께 띄운다.
+/// 모델 이름만으로는 무엇을 받아야 할지 알기 어려우므로, 추천 모델은 위쪽 안내 상자(바로 받기 버튼)와
+/// 목록 맨 위의 강조된 줄로 두 번 보여준다.</summary>
 public class ModelManagerPage : UserControl
 {
     readonly string baseConfigPath;
@@ -18,6 +20,19 @@ public class ModelManagerPage : UserControl
     readonly Button defaultBtn = new();
     readonly ProgressBar progress = new();
     readonly Label progressLabel = new();
+
+    // 추천 모델 안내 상자
+    readonly Panel recommendBox = new();
+    readonly Label recommendTitle = new();
+    readonly Label recommendDesc = new();
+    readonly Button recommendBtn = new();
+
+    /// <summary>추천 모델을 표시하는 색. 파란 강조색(선택·주 버튼)과 겹치지 않게 금색 계열을 쓴다.</summary>
+    static readonly Color RecommendText = Color.FromArgb(244, 204, 96);
+    static readonly Color RecommendBack = Color.FromArgb(52, 45, 22);
+    static readonly Color RecommendBorder = Color.FromArgb(150, 122, 48);
+
+    Font boldFont = null!;
 
     CancellationTokenSource? downloadCts;
     string? downloadingId;
@@ -34,8 +49,7 @@ public class ModelManagerPage : UserControl
         this.engineRunning = engineRunning;
         this.firstRun = firstRun;
         BuildUi();
-        Theme.StyleButton(downloadBtn, Theme.ButtonKind.Primary);
-        RefreshList(firstRun ? ModelStore.RecommendedId : null);
+        RefreshList(ModelStore.RecommendedId);
     }
 
     string? BaseDefaultId => Config.GetBaseValue(baseConfigPath, "model");
@@ -47,16 +61,21 @@ public class ModelManagerPage : UserControl
         Font = new Font("Segoe UI", 10);
         BackColor = Color.FromArgb(24, 24, 28);
         ForeColor = Color.Gainsboro;
+        boldFont = new Font(Font, FontStyle.Bold);
 
         var intro = new Label
         {
-            Dock = DockStyle.Top, Height = firstRun ? 64 : 40,
+            Dock = DockStyle.Top, Height = !firstRun && engineRunning ? 58 : 38,
             Padding = new Padding(8, 8, 8, 0), ForeColor = Color.Silver,
             Text = firstRun
-                ? "음성 인식에 쓸 Whisper 모델을 하나 이상 내려받아야 합니다.\n잘 모르겠다면 추천 모델(large-v3-turbo)을 받으세요. 저사양 PC라면 small이나 양자화(q5) 모델이 낫습니다."
+                ? "음성 인식에 쓸 Whisper 모델을 하나 이상 내려받아야 합니다. 잘 모르겠다면 아래 추천 모델을 받으세요."
                 : "여러 모델을 받아 두고, 프로필 설정에서 프로필별·화자별로 다른 모델을 지정할 수 있습니다."
                   + (engineRunning ? "\n캡처 중에는 삭제와 기본 모델 지정을 할 수 없습니다." : ""),
         };
+
+        BuildRecommendBox();
+        var recommendWrap = new Panel { Dock = DockStyle.Top, Height = 92, Padding = new Padding(8, 4, 8, 10) };
+        recommendWrap.Controls.Add(recommendBox);
 
         list.Dock = DockStyle.Fill;
         list.View = View.Details;
@@ -68,12 +87,12 @@ public class ModelManagerPage : UserControl
         list.SmallImageList = new ImageList { ImageSize = new Size(1, 28) }; // 행 높이를 넓히기 위한 빈 이미지 목록
         list.ForeColor = Color.Gainsboro;
         list.BorderStyle = BorderStyle.None;
-        list.Columns.Add("모델", 180);
+        list.Columns.Add("모델", 210);
         list.Columns.Add("크기", 80);
-        list.Columns.Add("상태", 130);
-        list.Columns.Add("설명", 330);
+        list.Columns.Add("상태", 120);
+        list.Columns.Add("설명", 380);
         list.SelectedIndexChanged += (s, e) => UpdateButtons();
-        list.DoubleClick += async (s, e) => { if (downloadBtn.Enabled) await DownloadSelectedAsync(); };
+        list.DoubleClick += async (s, e) => { if (downloadBtn.Enabled && SelectedId is { } id) await DownloadAsync(id); };
 
         progress.Dock = DockStyle.Top; progress.Height = 18;
         progressLabel.Dock = DockStyle.Top; progressLabel.Height = 24;
@@ -81,7 +100,7 @@ public class ModelManagerPage : UserControl
 
         var buttons = new Panel { Dock = DockStyle.Top, Height = 44 };
         downloadBtn.Text = "다운로드"; downloadBtn.Width = 100; downloadBtn.Height = 30; downloadBtn.Location = new Point(4, 6);
-        downloadBtn.Click += async (s, e) => await DownloadSelectedAsync();
+        downloadBtn.Click += async (s, e) => { if (SelectedId is { } id) await DownloadAsync(id); };
         cancelBtn.Text = "취소"; cancelBtn.Width = 80; cancelBtn.Height = 30; cancelBtn.Location = new Point(110, 6);
         cancelBtn.Click += (s, e) => downloadCts?.Cancel();
         deleteBtn.Text = "삭제"; deleteBtn.Width = 80; deleteBtn.Height = 30; deleteBtn.Location = new Point(196, 6);
@@ -95,10 +114,97 @@ public class ModelManagerPage : UserControl
         bottom.Controls.Add(progressLabel);
         bottom.Controls.Add(progress);
 
+        // Dock은 나중에 추가한 것부터 바깥쪽에 붙는다: 안내문 → 추천 상자 → 목록 순으로 위에서부터 놓인다.
         Controls.Add(list);
+        Controls.Add(recommendWrap);
         Controls.Add(intro);
         Controls.Add(bottom);
         UpdateButtons();
+    }
+
+    /// <summary>추천 모델 안내 상자: 금색 테두리 안에 모델 이름·크기·이유와 바로 받기 버튼.</summary>
+    void BuildRecommendBox()
+    {
+        var info = ModelStore.Recommended;
+
+        recommendBox.Dock = DockStyle.Fill;
+        recommendBox.BackColor = RecommendBack;
+        recommendBox.Paint += (s, e) =>
+        {
+            using var pen = new Pen(RecommendBorder);
+            e.Graphics.DrawRectangle(pen, 0, 0, recommendBox.Width - 1, recommendBox.Height - 1);
+        };
+
+        recommendTitle.AutoSize = false;
+        recommendTitle.AutoEllipsis = true;
+        recommendTitle.Location = new Point(14, 10);
+        recommendTitle.Height = 26;
+        recommendTitle.Font = new Font("Segoe UI", 12, FontStyle.Bold);
+        recommendTitle.ForeColor = RecommendText;
+        recommendTitle.BackColor = RecommendBack;
+        recommendTitle.Text = $"★ 추천 모델   {info.Id}  ({ModelStore.FormatSize(info.SizeBytes)})";
+
+        recommendDesc.AutoSize = false;
+        recommendDesc.AutoEllipsis = true;
+        recommendDesc.Location = new Point(16, 40);
+        recommendDesc.Height = 34;
+        recommendDesc.ForeColor = Color.FromArgb(214, 204, 176);
+        recommendDesc.BackColor = RecommendBack;
+        recommendDesc.Text = "한국어 받아 적기에 가장 정확합니다. 개인·비영리 무료(BatiAI 라이선스)\n" +
+                             "한국어가 아닌 말은 large-v3-turbo를 받으세요.";
+
+        recommendBtn.Size = new Size(180, 36);
+        recommendBtn.Click += async (s, e) => await OnRecommendClickedAsync();
+
+        recommendBox.Controls.AddRange([recommendTitle, recommendDesc, recommendBtn]);
+        recommendBox.Resize += (s, e) => LayoutRecommendBox();
+        LayoutRecommendBox();
+    }
+
+    void LayoutRecommendBox()
+    {
+        recommendBtn.Location = new Point(recommendBox.Width - recommendBtn.Width - 14, (recommendBox.Height - recommendBtn.Height) / 2);
+        int textWidth = Math.Max(recommendBtn.Left - 24, 100);
+        recommendTitle.Width = textWidth;
+        recommendDesc.Width = textWidth;
+    }
+
+    async Task OnRecommendClickedAsync()
+    {
+        string id = ModelStore.RecommendedId;
+        if (!ModelStore.IsInstalled(id)) await DownloadAsync(id);
+        else SetDefault(id);
+    }
+
+    /// <summary>추천 상자 버튼: 설치 전이면 "받기", 설치했지만 기본 모델이 아니면 "기본 모델로 지정", 기본이면 완료 표시.</summary>
+    void UpdateRecommendButton()
+    {
+        string id = ModelStore.RecommendedId;
+        bool busy = downloadingId is not null;
+        bool installed = ModelStore.IsInstalled(id);
+        bool isDefault = installed && string.Equals(ModelStore.ResolveDefault(BaseDefaultId), id, StringComparison.OrdinalIgnoreCase);
+
+        if (downloadingId == id)
+        {
+            recommendBtn.Text = "다운로드 중...";
+            recommendBtn.Enabled = false;
+        }
+        else if (!installed)
+        {
+            recommendBtn.Text = "★ 추천 모델 받기";
+            recommendBtn.Enabled = !busy;
+        }
+        else if (!isDefault)
+        {
+            recommendBtn.Text = "기본 모델로 지정";
+            recommendBtn.Enabled = !busy && !engineRunning;
+        }
+        else
+        {
+            recommendBtn.Text = "✓ 설치됨 (기본)";
+            recommendBtn.Enabled = false;
+        }
+        Theme.StyleButton(recommendBtn, recommendBtn.Enabled ? Theme.ButtonKind.Primary : Theme.ButtonKind.Normal);
     }
 
     void RefreshList(string? selectId = null)
@@ -110,24 +216,39 @@ public class ModelManagerPage : UserControl
         list.BeginUpdate();
         list.Items.Clear();
 
+        // 추천 모델을 맨 위에 두고, 나머지는 카탈로그 순서, 끝에 직접 넣은 모델.
         var ids = ModelStore.Catalog.Select(m => m.Id)
+            .OrderBy(id => id == ModelStore.RecommendedId ? 0 : 1)
             .Concat(installed.Where(id => ModelStore.FindInfo(id) is null));
         foreach (string id in ids)
         {
             var info = ModelStore.FindInfo(id);
+            bool recommended = id == ModelStore.RecommendedId;
             bool isInstalled = installed.Contains(id, StringComparer.OrdinalIgnoreCase);
+            bool isDefault = isInstalled && string.Equals(id, defaultId, StringComparison.OrdinalIgnoreCase);
             string state = id == downloadingId ? "다운로드 중"
-                : !isInstalled ? "-"
-                : string.Equals(id, defaultId, StringComparison.OrdinalIgnoreCase) ? "설치됨 (기본)"
-                : "설치됨";
+                : isDefault ? "설치됨 (기본)"
+                : isInstalled ? "설치됨"
+                : recommended ? "★ 추천"
+                : "-";
             long size = info?.SizeBytes ?? (ModelStore.GetPath(id) is { } p ? new FileInfo(p).Length : 0);
 
-            var item = new ListViewItem(id) { Tag = id, UseItemStyleForSubItems = false };
+            var item = new ListViewItem(recommended ? $"★ {id}" : id) { Tag = id, UseItemStyleForSubItems = false };
             item.SubItems.Add(ModelStore.FormatSize(size));
             var stateSub = item.SubItems.Add(state);
-            stateSub.ForeColor = isInstalled ? Color.FromArgb(110, 200, 120) : Color.Gray;
             item.SubItems.Add(info?.Description ?? "직접 추가한 모델");
-            if (id == ModelStore.RecommendedId) item.Font = new Font(list.Font, FontStyle.Bold);
+            stateSub.ForeColor = isInstalled ? Color.FromArgb(110, 200, 120) : Color.Gray;
+
+            if (recommended)
+            {
+                // 추천 줄은 금색 바탕·글자로 칠하고 굵게 써서 다른 줄과 확실히 구분되게 한다.
+                foreach (ListViewItem.ListViewSubItem sub in item.SubItems)
+                {
+                    sub.BackColor = RecommendBack;
+                    sub.Font = boldFont;
+                    if (sub != stateSub || !isInstalled) sub.ForeColor = RecommendText;
+                }
+            }
             list.Items.Add(item);
 
             if (string.Equals(id, selectId, StringComparison.OrdinalIgnoreCase)) item.Selected = true;
@@ -147,15 +268,12 @@ public class ModelManagerPage : UserControl
         deleteBtn.Enabled = !busy && !engineRunning && installed;
         defaultBtn.Enabled = !busy && !engineRunning && installed;
         progress.Visible = busy;
-
-        // 첫 실행: 모델이 하나라도 생기면 다운로드 대신 창의 "시작"이 주 버튼이 된다.
-        if (firstRun)
-            Theme.StyleButton(downloadBtn, ModelStore.ListInstalled().Count > 0 ? Theme.ButtonKind.Normal : Theme.ButtonKind.Primary);
+        UpdateRecommendButton();
     }
 
-    async Task DownloadSelectedAsync()
+    async Task DownloadAsync(string id)
     {
-        if (SelectedId is not { } id || ModelStore.FindInfo(id) is not { } info) return;
+        if (downloadingId is not null || ModelStore.FindInfo(id) is not { } info) return;
 
         downloadingId = id;
         downloadCts = new CancellationTokenSource();

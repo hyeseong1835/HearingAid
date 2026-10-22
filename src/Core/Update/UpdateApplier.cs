@@ -8,7 +8,11 @@ public static class UpdateApplier
 {
     /// <summary>사용자가 만들거나 고친 파일. 앱 폴더에 이미 있으면 새 버전 것으로 덮어쓰지 않는다.</summary>
     static readonly string[] PreservedFiles = ["appsettings.json"];
-    static readonly string[] PreservedDirs = ["profiles", "models", "whisper"];
+    static readonly string[] PreservedDirs = ["profiles", "models", "whisper", "logs"];
+
+    /// <summary>배포 zip에 든 파일 목록(scripts/publish.ps1이 만든다). 새 버전에 없는 예전 파일을 지우는 데 쓴다.
+    /// 목록에 적힌 파일만 지우므로 사용자가 앱 폴더에 넣은 파일은 건드리지 않는다.</summary>
+    public const string ManifestFile = "app-files.txt";
 
     public static void Run(string[] args)
     {
@@ -23,7 +27,10 @@ public static class UpdateApplier
         try
         {
             WaitForExit(pid);
+            // 복사가 예전 목록을 덮어쓰기 전에 읽어 둔다.
+            HashSet<string> oldFiles = ReadManifest(appDir);
             CopyTree(stageDir, appDir);
+            RemoveObsoleteFiles(appDir, oldFiles, ReadManifest(stageDir));
         }
         catch (Exception ex)
         {
@@ -57,6 +64,34 @@ public static class UpdateApplier
 
             Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
             CopyWithRetry(src, dst);
+        }
+    }
+
+    /// <summary>폴더의 파일 목록을 읽는다. 목록이 없으면(목록을 만들기 전 버전) 빈 집합.
+    /// 앱 폴더 밖을 가리키는 항목은 버린다.</summary>
+    static HashSet<string> ReadManifest(string dir)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string path = Path.Combine(dir, ManifestFile);
+        if (!File.Exists(path)) return set;
+        foreach (string line in File.ReadAllLines(path))
+        {
+            string rel = line.Trim().Replace('/', Path.DirectorySeparatorChar);
+            if (rel.Length == 0 || Path.IsPathRooted(rel) || rel.Split(Path.DirectorySeparatorChar).Contains("..")) continue;
+            set.Add(rel);
+        }
+        return set;
+    }
+
+    /// <summary>예전 버전 목록에는 있고 새 버전 목록에는 없는 파일(이름이 바뀌거나 빠진 DLL 등)을 지운다.
+    /// 새 목록이 비어 있으면(잘못 만든 배포본) 아무것도 지우지 않는다. 지우지 못한 파일은 그냥 둔다.</summary>
+    static void RemoveObsoleteFiles(string appDir, HashSet<string> oldFiles, HashSet<string> newFiles)
+    {
+        if (oldFiles.Count == 0 || newFiles.Count == 0) return;
+        foreach (string rel in oldFiles)
+        {
+            if (newFiles.Contains(rel) || IsPreserved(rel)) continue;
+            try { File.Delete(Path.Combine(appDir, rel)); } catch { }
         }
     }
 

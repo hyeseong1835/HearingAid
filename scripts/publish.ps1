@@ -29,6 +29,18 @@ if ($BuildNumber -gt 0) {
 }
 Write-Host "버전 $Version 빌드"
 
+# 정식 릴리스는 GitHub의 main과 똑같은 코드로만 만든다. 다른 브랜치나 고치던 파일로 빌드하면
+# 태그가 가리키는 커밋과 zip 내용물이 어긋난다.
+if ($Publish) {
+    if (git status --porcelain) { throw "커밋하지 않은 변경이 있습니다. 정리한 뒤 다시 실행하세요." }
+    $branch = git rev-parse --abbrev-ref HEAD
+    if ($branch -ne "main") { throw "main 브랜치에서 실행하세요. (지금: $branch)" }
+    git fetch --quiet origin main
+    if ($LASTEXITCODE -ne 0) { throw "git fetch failed" }
+    $Commit = git rev-parse HEAD
+    if ($Commit -ne (git rev-parse origin/main)) { throw "로컬 main이 origin/main과 다릅니다. git pull(또는 push)로 맞춘 뒤 다시 실행하세요." }
+}
+
 if (Test-Path $OutDir) { Remove-Item $OutDir -Recurse -Force }
 
 dotnet publish HearingAid.csproj -c $Configuration -r $Runtime --self-contained true -p:DebugType=none "-p:Version=$Version" -o $OutDir
@@ -49,6 +61,13 @@ foreach ($rt in @("runtimes\vulkan\win-x64", "runtimes\win-x64")) {
 }
 $models = Get-ChildItem $OutDir -Recurse -Filter "ggml-*.bin"
 if ($models) { throw "배포 결과물에 모델 파일이 들어 있습니다: $($models.FullName -join ', ')" }
+
+# 배포 파일 목록. 앱의 자동 업데이트(UpdateApplier)가 이전 버전 목록과 비교해, 새 버전에서 빠진 파일을 지운다.
+$outRoot = (Resolve-Path $OutDir).Path.TrimEnd('\') + '\'
+$manifest = Get-ChildItem $outRoot -Recurse -File |
+    ForEach-Object { $_.FullName.Substring($outRoot.Length).Replace('\', '/') }
+$manifest += "app-files.txt"
+[System.IO.File]::WriteAllLines((Join-Path $outRoot "app-files.txt"), [string[]]$manifest)
 
 New-Item -ItemType Directory -Force -Path $ReleaseDir | Out-Null
 $zipPath = Join-Path $ReleaseDir "HearingAid-$Version-$Runtime.zip"
@@ -81,7 +100,8 @@ if ($Publish) {
     $ErrorActionPreference = "Stop"
     if ($exists) { throw "릴리스 $Tag 가 이미 있습니다. csproj의 <Version>을 올리세요." }
 
-    gh release create $Tag $zipPath --title $Tag --generate-notes
+    # --target이 없으면 태그가 GitHub 기본 브랜치의 그 순간 HEAD에 붙는다. 빌드한 커밋에 정확히 붙인다.
+    gh release create $Tag $zipPath --title $Tag --generate-notes --target $Commit
     if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
     Write-Host "GitHub 릴리스 $Tag 생성 완료"
 }

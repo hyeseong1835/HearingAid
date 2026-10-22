@@ -138,6 +138,7 @@ public class MainForm : Form
         list.BackColor = Theme.Background;
         list.ForeColor = Theme.Text;
         list.Font = new Font("Segoe UI", 11);
+        boldListFont = new Font(list.Font, FontStyle.Bold);
         list.BorderStyle = BorderStyle.None;
         list.ShowItemToolTips = true;
         // 행 높이는 ListView에 직접 설정할 방법이 없어, 높이만 있는 빈 이미지 목록으로 넓힌다.
@@ -205,6 +206,9 @@ public class MainForm : Form
     readonly Label emptyHint = new();
     readonly Panel warningBar = new();
     readonly Label warningLabel = new();
+    readonly ToolTip toolTip = new();
+    /// <summary>소스·화자 칸의 굵은 글꼴. 줄마다 새로 만들면 해제되지 않은 글꼴이 오래 켜 둘수록 쌓이므로 하나를 같이 쓴다.</summary>
+    Font boldListFont = null!;
 
     static Button ToolButton(string text, EventHandler onClick)
     {
@@ -260,8 +264,11 @@ public class MainForm : Form
     {
         UpdateToggleButton(engine.IsRunning);
         UpdateProfileButton();
-        warningBar.Visible = engine.SetupWarning is not null;
-        warningLabel.Text = $"⚠  {engine.SetupWarning}";
+        // 시작할 수 없는 이유가 우선이고, 시작은 되지만 설정 파일을 읽지 못해 기본값을 쓰는 경우에도 알린다.
+        string? warning = engine.SetupWarning ?? engine.Config.LoadWarning;
+        warningBar.Visible = warning is not null;
+        warningLabel.Text = $"⚠  {warning}";
+        toolTip.SetToolTip(warningLabel, warning); // 길면 잘리므로 마우스를 올리면 전문을 보여준다
         list.Columns[SourceColumn].Width = MultipleSources ? 140 : 0;
         list.Columns[SpeakerColumn].Width = engine.SpeakerRecognition ? 130 : 0;
         FitTextColumn();
@@ -623,15 +630,16 @@ public class MainForm : Form
         var item = new ListViewItem(recode.time.ToString("HH:mm:ss"))
         {
             ForeColor = Theme.SubText,
-            UseItemStyleForSubItems = false
+            UseItemStyleForSubItems = false,
+            Tag = recode.text is not null, // 받아 적은 글이 있는지. 내보낼 때 아직 "…"인 줄을 뺀다.
         };
         // 소스는 별명으로 보여주고, 같은 소스는 같은 색으로 칠해 어느 소스의 말인지 한눈에 구분되게 한다.
         var sourceSub = item.SubItems.Add(engine.Config.GetAudioSourceAlias(recode.source));
         sourceSub.ForeColor = SpeakerPalette[recode.source % SpeakerPalette.Length];
-        sourceSub.Font = new Font(list.Font, FontStyle.Bold);
+        sourceSub.Font = boldListFont;
         var speakerSub = item.SubItems.Add(hasSpeaker ? recode.speaker : "-");
         speakerSub.ForeColor = hasSpeaker ? SpeakerColor(recode.speaker!) : Theme.SubText;
-        speakerSub.Font = new Font(list.Font, FontStyle.Bold);
+        speakerSub.Font = boldListFont;
         // 전사가 끝나기 전에는 흐린 "…"로 두고, 글이 도착하면 OnRecodeEdited에서 본문 색으로 바꾼다.
         var sub = item.SubItems.Add(recode.text ?? "…");
         sub.ForeColor = recode.text is null ? Theme.SubText : Theme.Text;
@@ -651,6 +659,7 @@ public class MainForm : Form
 
         existing.SubItems[TextColumn].Text = newRecode.text ?? "";
         existing.SubItems[TextColumn].ForeColor = Theme.Text;
+        existing.Tag = newRecode.text is not null;
         existing.ToolTipText = newRecode.text;
 
         if (autoScroll.Checked)
@@ -684,11 +693,14 @@ public class MainForm : Form
     /// <summary>내보낼 열. 화면과 같이, 소스가 하나뿐이면 소스 열을, 화자를 구분하지 않으면 화자 열을 뺀다.</summary>
     (bool Sources, bool Speakers) ExportColumns => (MultipleSources, engine.SpeakerRecognition);
 
+    /// <summary>내보낼 줄. 아직 인식 중이거나 인식 결과가 비어 "…"로 남은 줄은 뺀다.</summary>
+    IEnumerable<ListViewItem> ExportItems => list.Items.Cast<ListViewItem>().Where(it => it.Tag is true);
+
     void ExportTxt(string path)
     {
         var (sources, speakers) = ExportColumns;
         using var w = new StreamWriter(path) { NewLine = "\n" };
-        foreach (ListViewItem it in list.Items)
+        foreach (ListViewItem it in ExportItems)
         {
             string prefix = (sources ? $"[{it.SubItems[SourceColumn].Text}] " : "")
                           + (speakers ? $"{it.SubItems[SpeakerColumn].Text}: " : "");
@@ -707,7 +719,7 @@ public class MainForm : Form
         header.Add("텍스트");
         w.WriteLine(string.Join(",", header));
 
-        foreach (ListViewItem it in list.Items)
+        foreach (ListViewItem it in ExportItems)
         {
             var fields = new List<string> { it.Text };
             if (sources) fields.Add(it.SubItems[SourceColumn].Text);

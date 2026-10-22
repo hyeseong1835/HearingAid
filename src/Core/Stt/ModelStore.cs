@@ -27,13 +27,17 @@ public static class ModelStore
         new("large-v3-turbo-q8_0", 874_188_075, "large-v3-turbo 양자화(고품질)"),
         new("large-v3-q5_0",     1_081_140_203, "large-v3 양자화"),
         new("medium",            1_533_763_059, "정확도 높음, 느림"),
-        new("large-v3-turbo",    1_624_555_275, "추천. large-v3 수준 정확도에 훨씬 빠름"),
+        new("large-v3-turbo",    1_624_555_275, "large-v3 수준 정확도에 훨씬 빠름. 한국어 외 언어엔 이 모델"),
         new("large-v3",          3_095_033_483, "가장 정확, 가장 느림"),
         new("batisay-ko-turbo-q5_0", 574_041_195, "한국어 특화 large-v3-turbo 양자화 (BatiAI 라이선스)", "batiai/batisay-ko-turbo"),
-        new("batisay-ko-turbo-q8_0", 874_188_075, "한국어 특화 large-v3-turbo 양자화(고품질) (BatiAI 라이선스)", "batiai/batisay-ko-turbo"),
+        new("batisay-ko-turbo-q8_0", 874_188_075, "한국어 특화. 한국어 정확도가 가장 좋고 빠름 (BatiAI 라이선스)", "batiai/batisay-ko-turbo"),
     ];
 
-    public const string RecommendedId = "large-v3-turbo";
+    /// <summary>추천 모델. 앱의 기본 언어가 한국어라 한국어 특화 모델을 추천한다. q8_0은 원본(f16)과 정확도가 거의 같고 용량은 절반이다.
+    /// 모델 화면이 맨 위에 별표와 강조색으로 보여주고, 첫 실행 때 바로 받을 수 있는 버튼을 둔다.</summary>
+    public const string RecommendedId = "batisay-ko-turbo-q8_0";
+
+    public static WhisperModelInfo Recommended => FindInfo(RecommendedId)!;
 
     public static string ModelsDir => Path.Combine(AppContext.BaseDirectory, "models");
     static string LegacyDir => Path.Combine(AppContext.BaseDirectory, "whisper");

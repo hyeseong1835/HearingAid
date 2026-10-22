@@ -44,18 +44,18 @@
   설정마다 설명이 붙어 있어 각 값이 무엇인지 화면에서 바로 알 수 있습니다.
 
   <div align="center">
-    <img src="docs/images/profile.png" alt="프로필 설정 화면" width="70%" />
-    <br><em style="font-size:80%">프로필 설정</em>
+    <img src="docs/images/profile.png" alt="설정 창의 프로필 페이지" width="70%" />
+    <br><em style="font-size:80%">설정 → 프로필</em>
   </div>
 
 - **🧠 모델 선택**
 
-  가벼운 `tiny`부터 정확한 `large-v3`까지 앱 안에서 받아 둘 수 있습니다.
+  가벼운 `tiny`부터 정확한 `large-v3`, 한국어 특화 `batisay-ko-turbo`까지 앱 안에서 받아 둘 수 있습니다.
   **프로필별**, **화자별**로 다른 모델을 지정할 수 있습니다.
 
   <div align="center">
-    <img src="docs/images/models.png" alt="모델 관리 화면" width="70%" />
-    <br><em style="font-size:80%">모델 관리</em>
+    <img src="docs/images/models.png" alt="설정 창의 모델 페이지" width="70%" />
+    <br><em style="font-size:80%">설정 → 모델</em>
   </div>
 
 - **⚡ GPU 가속**
@@ -82,7 +82,7 @@
 
 1. [Releases](https://github.com/Hyeseong1835/HearingAid/releases/latest)에서 `HearingAid-<버전>-win-x64.zip`을 받습니다.
 2. 원하는 폴더에 압축을 풀고 `HearingAid.exe`를 실행합니다.
-3. 처음 실행하면 음성 인식 모델을 고르는 창이 뜹니다. 잘 모르겠다면 **추천 모델 `large-v3-turbo`** (약 1.6GB)를 받으세요.
+3. 처음 실행하면 음성 인식 모델을 고르는 창이 뜹니다. 잘 모르겠다면 위쪽 금색 상자의 **★ 추천 모델 받기**를 누르세요. 한국어 특화 모델 `batisay-ko-turbo-q8_0`(약 874MB)을 받습니다. 한국어가 아닌 말을 받아 적으려면 `large-v3-turbo`를 받으세요.
 
 > [!TIP]
 > 설정을 앱 폴더에 저장하므로 `C:\Program Files`처럼 쓰기가 제한된 폴더는 피하세요. 바탕 화면이나 문서 폴더면 충분합니다.
@@ -106,7 +106,7 @@
 
 **첫 실행 화면에서 모델 다운로드가 안 돼요**
 
-모델은 `huggingface.co`에서 받습니다. 회사·학교 네트워크에서 막혀 있다면 다른 곳에서 `ggml-large-v3-turbo.bin`을 받아 앱 폴더의 `models\`에 넣고 실행하세요. 모델 목록은 [whisper.cpp 모델 저장소](https://huggingface.co/ggerganov/whisper.cpp/tree/main)에 있습니다.
+모델은 `huggingface.co`에서 받습니다. 회사·학교 네트워크에서 막혀 있다면 다른 곳에서 모델 파일(예: `ggml-batisay-ko-turbo-q8_0.bin`, `ggml-large-v3-turbo.bin`)을 받아 앱 폴더의 `models\`에 넣고 실행하세요. 모델은 [batisay-ko-turbo 저장소](https://huggingface.co/batiai/batisay-ko-turbo/tree/main)와 [whisper.cpp 모델 저장소](https://huggingface.co/ggerganov/whisper.cpp/tree/main)에 있습니다.
 
 **이전 버전에서 옮겨 오고 싶어요**
 
@@ -133,12 +133,13 @@
 
 | 모델 | 크기 | 추천 상황 |
 |---|---|---|
-| `large-v3-turbo` | 1.6GB | **추천.** GPU가 있는 PC. 정확하고 빠름 |
-| `large-v3-turbo-q5_0` | 574MB | 용량을 아끼고 싶을 때. 정확도는 거의 비슷 |
+| `batisay-ko-turbo-q8_0` | 874MB | **★ 추천.** 한국어 특화 모델 ([BatiAI 라이선스](https://huggingface.co/batiai/batisay-ko-turbo), 개인·비영리 무료) |
+| `batisay-ko-turbo-q5_0` | 574MB | 위 모델을 더 압축한 것. 용량을 아끼고 싶을 때 |
+| `large-v3-turbo` | 1.6GB | 한국어가 아닌 말을 받아 적을 때. 정확하고 빠름 |
+| `large-v3-turbo-q5_0` | 574MB | large-v3-turbo의 양자화. 정확도는 거의 비슷 |
 | `small`, `small-q5_1` | 190~490MB | GPU가 없거나 저사양 PC |
 | `tiny`, `base` | 60~150MB | 빠른 테스트용. 정확도 낮음 |
 | `large-v3` | 3.1GB | 가장 정확하지만 가장 느림 |
-| `batisay-ko-turbo-q5_0` | 574MB | 한국어 특화 모델 ([BatiAI 라이선스](https://huggingface.co/batiai/batisay-ko-turbo), 개인·비영리 무료) |
 
 모델은 언제든 메인 화면의 **모델** 버튼에서 추가하거나 지울 수 있습니다.
 
@@ -150,11 +151,13 @@
 |---|---|
 | **시작 / 정지** | 받아 적기를 시작하거나 멈춤 |
 | **프로필** (목록) | 사용할 프로필을 골라 바로 전환 (캡처를 정지한 상태에서) |
-| **⚙ 편집** | 프로필 추가·삭제, 오디오 소스·모델·화자별 모델 설정 |
-| **모델** | 모델 다운로드·삭제, 기본 모델 지정 |
+| **⚙ 편집** | 지금 쓰는 프로필을 설정 창에서 편집 (오디오 소스·모델·화자별 모델) |
 | **파형** | 들어오는 소리 크기를 실시간으로 표시. 받아 적기가 안 될 때 확인용 |
+| **모델** | 설정 창의 모델 페이지: 모델 다운로드·삭제, 기본 모델 지정 |
 | **내보내기** | TXT / CSV로 저장 |
+| **지우기** / **새로고침** | 화면의 목록을 비우기 / 받아 적은 기록으로 다시 채우기 |
 | **문서** | 설정 방법과 문제 해결 (F1) |
+| **설정** | 설정 창. 왼쪽에서 **프로필**(추가·삭제·편집), **모델**, **업데이트**(자동 확인·업데이트 채널)를 고름 |
 | **업데이트** | 새 버전 확인 및 설치 |
 
 ### 프로필 만들기
@@ -236,7 +239,7 @@ feat/… ─PR(squash)→ develop ─PR(merge commit)→ main ─→ 개발 빌�
 1. `HearingAid.csproj`의 `<Version>`을 올리는 PR을 `develop`에 합칩니다.
 2. `develop → main` 배포 PR을 merge commit으로 합칩니다(이때 개발 빌드도 함께 올라갑니다).
 3. `main`을 체크아웃한 상태에서 아래 명령을 실행합니다. [gh CLI](https://cli.github.com) 로그인이 필요합니다.
-   스크립트는 지금 작업 폴더의 코드를 빌드하므로, 다른 브랜치에서 실행하면 태그와 내용물이 어긋납니다.
+   스크립트는 `main` 브랜치이고, 커밋하지 않은 변경이 없고, `origin/main`과 같은 커밋일 때만 진행하며, 태그를 빌드한 커밋에 붙입니다.
 
    ```powershell
    .\scripts\publish.ps1 -Publish
