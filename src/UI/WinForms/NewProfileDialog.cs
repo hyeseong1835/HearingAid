@@ -18,7 +18,7 @@ class NewProfileDialog : Form
     void BuildUi()
     {
         Text = "새 프로필 추가";
-        Width = 360; Height = 180;
+        ClientSize = new Size(344, 146); // Height는 제목 표시줄을 포함해 아래 버튼이 잘릴 수 있어 안쪽 영역으로 지정한다
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false; MinimizeBox = false;
