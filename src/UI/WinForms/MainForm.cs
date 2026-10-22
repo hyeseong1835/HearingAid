@@ -29,10 +29,24 @@ public class MainForm : Form
         AttachEngine(engine);
         Shown += async (s, e) =>
         {
+            ReportPreviousCrash();
             if (!this.engine.Config.CheckForUpdates) return;
             await CheckForUpdateAsync(silent: true);
             if (availableUpdate is not null) ShowUpdateDialog();
         };
+    }
+
+    /// <summary>지난 실행이 비정상 종료돼 crash 로그가 새로 생겼으면 알리고, 원하면 로그 폴더를 연다.</summary>
+    void ReportPreviousCrash()
+    {
+        if (CrashLog.FindUnseen() is not { } path) return;
+        CrashLog.MarkSeen();
+        var answer = MessageBox.Show(this,
+            "지난번에 HearingAid가 비정상적으로 종료됐습니다. 원인을 기록해 두었습니다.\n\n" +
+            $"{path}\n\n로그 폴더를 열까요? 문제를 알릴 때 이 파일을 함께 보내 주세요.",
+            "비정상 종료", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+        if (answer == DialogResult.Yes)
+            try { System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\""); } catch { }
     }
 
     void BuildUi()
@@ -409,8 +423,15 @@ public class MainForm : Form
     {
         if (engine.IsRunning)
         {
-            _ = engine.StopAsync();
-            UpdateToggleButton(running: false);
+            // 정지가 끝나기 전에 다시 시작하면 아직 멈추는 중인 소스와 새로 시작하는 소스가 겹친다. 끝날 때까지 버튼을 막는다.
+            toggleBtn.Enabled = false;
+            try { await engine.StopAsync(); }
+            catch (Exception ex) { status.Text = $"정지 중 오류: {ex.Message}"; }
+            finally
+            {
+                UpdateToggleButton(running: false);
+                toggleBtn.Enabled = true;
+            }
         }
         else if (engine.SetupWarning is not null)
         {

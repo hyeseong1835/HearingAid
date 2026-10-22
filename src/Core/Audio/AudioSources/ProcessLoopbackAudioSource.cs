@@ -115,13 +115,20 @@ public class ProcessLoopbackAudioSource : IAudioSource
         resampled = new WdlResamplingSampleProvider(mono, TargetRate);
 
         Interlocked.Exchange(ref lastDataTick, Environment.TickCount64);
+        // 필드(buffer)가 아니라 지역 변수를 캡처한다. 정지할 때 필드를 null로 비우는 순간 캡처 스레드의 콜백이
+        // 아직 돌고 있으면 NullReferenceException이 나고, 이 스레드의 예외는 앱 전체를 끈다.
+        BufferedWaveProvider buf = buffer;
         recorder.DataAvailable += (data, flags, _, _) =>
         {
-            Interlocked.Exchange(ref lastDataTick, Environment.TickCount64);
-            if (flags.HasFlag(AudioClientBufferFlags.Silent))
-                buffer.AddSamples(new byte[data.Length]);
-            else
-                buffer.AddSamples(data);
+            try
+            {
+                Interlocked.Exchange(ref lastDataTick, Environment.TickCount64);
+                if (flags.HasFlag(AudioClientBufferFlags.Silent))
+                    buf.AddSamples(new byte[data.Length]);
+                else
+                    buf.AddSamples(data);
+            }
+            catch (Exception ex) { ReportFailure("캡처 콜백", ex); }
         };
         recorder.RecordingStopped += (s, e) =>
         {
@@ -130,7 +137,7 @@ public class ProcessLoopbackAudioSource : IAudioSource
         recorder.StartRecording();
 
         cts = new CancellationTokenSource();
-        pumpThread = new Thread(() => PumpLoop(cts.Token)) { IsBackground = true, Name = "ProcessLoopbackPump" };
+        pumpThread = new Thread(() => RunPump(cts.Token)) { IsBackground = true, Name = "ProcessLoopbackPump" };
         pumpThread.Start();
 
         IsRunning = true;
@@ -166,6 +173,19 @@ public class ProcessLoopbackAudioSource : IAudioSource
     {
         try { return p.StartTime; }
         catch { return DateTime.MaxValue; } // 권한이 없어 시작 시각을 못 읽는 프로세스는 뒤로
+    }
+
+    /// <summary>펌프 스레드의 예외는 잡지 않으면 앱 전체를 끈다. 기록하고 상태 표시줄에 알린 뒤 이 소스만 멈춘다.</summary>
+    void RunPump(CancellationToken token)
+    {
+        try { PumpLoop(token); }
+        catch (Exception ex) { ReportFailure("오디오 처리", ex); }
+    }
+
+    void ReportFailure(string where, Exception ex)
+    {
+        CrashLog.Write($"ProcessLoopback {where}", ex);
+        SetStatus?.Invoke($"캡처 오류({where}): {ex.Message} — 정지 후 다시 시작하세요.");
     }
 
     void PumpLoop(CancellationToken token)

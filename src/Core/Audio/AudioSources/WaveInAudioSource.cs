@@ -121,11 +121,20 @@ public class WaveInAudioSource : IAudioSource
 
     void OnData(object? sender, WaveInEventArgs e)
     {
-        var samples = new float[e.BytesRecorded / 2];
-        for (int i = 0; i < samples.Length; i++)
-            samples[i] = BitConverter.ToInt16(e.Buffer, i * 2) / 32768f;
-        AudioEffect.Gain(samples, gain);
-        _ = audioChannel.PushSamples(null, samples);
+        try
+        {
+            var samples = new float[e.BytesRecorded / 2];
+            for (int i = 0; i < samples.Length; i++)
+                samples[i] = BitConverter.ToInt16(e.Buffer, i * 2) / 32768f;
+            AudioEffect.Gain(samples, gain);
+            _ = audioChannel.PushSamples(null, samples);
+        }
+        catch (Exception ex)
+        {
+            // 캡처 콜백의 예외가 앱 전체를 끄지 않도록 기록만 하고 알린다.
+            CrashLog.Write("WaveIn 캡처 콜백", ex);
+            SetStatus?.Invoke($"캡처 오류: {ex.Message}");
+        }
     }
 
     public void Dispose() => StopAsync();

@@ -93,7 +93,9 @@ public class TranscriberEngine : ITranscriber
             engine._channelSources.TryRemove(channel, out _);
             channel.samplesAvailableHandlerParam = null;
             channel.samplesAvailableHandler -= engine._onSamplesHandler;
-            channel.Dispose();
+            // 채널은 해제하지 않는다. 마이크·PC 소리 등은 정지 후 다시 시작할 때 같은 채널을 다시 쓰는데,
+            // 여기서 해제하면 다시 시작하는 순간 해제된 VAD(ONNX 세션)를 써서 앱이 꺼졌다.
+            // 채널 해제는 그것을 만든 오디오 소스(또는 엔진 Dispose)가 맡는다.
         };
     /// <summary>오디오 소스를 준비하지 못한 이유(없으면 null). 이 값이 있으면 시작할 수 없다.</summary>
     public string? SetupWarning { get; }

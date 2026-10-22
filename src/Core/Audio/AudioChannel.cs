@@ -41,6 +41,17 @@ public class AudioChannel : IDisposable
     /// 발화 구간이 끝났다고 판단될 때만 samplesAvailableHandler를 그 구간 전체와 함께 호출한다.</summary>
     public ValueTask PushSamples(string? speaker, ReadOnlyMemory<float> samples)
     {
+        // 캡처 콜백과 무음 보충(펌프) 등 여러 스레드가 동시에 밀어넣어도 내부 버퍼·VAD 상태가 꼬이지 않게 한 번에 하나씩 처리한다.
+        lock (pending)
+        {
+            if (disposed) return ValueTask.CompletedTask;
+            PushSamplesCore(speaker, samples);
+        }
+        return ValueTask.CompletedTask;
+    }
+
+    void PushSamplesCore(string? speaker, ReadOnlyMemory<float> samples)
+    {
         if (autoGain)
         {
             float[] boosted = samples.ToArray(); // 호출자 버퍼를 건드리지 않도록 복사본에 적용
@@ -58,8 +69,6 @@ public class AudioChannel : IDisposable
             pending.RemoveRange(0, SileroVad.WindowSize);
             ProcessWindow(speaker, window);
         }
-
-        return ValueTask.CompletedTask;
     }
 
     void ProcessWindow(string? speaker, float[] window)
@@ -111,8 +120,12 @@ public class AudioChannel : IDisposable
 
     public void Dispose()
     {
-        if (disposed) return;
-        disposed = true;
-        vad.Dispose();
+        // 처리 중인 PushSamples가 끝난 뒤에 VAD를 해제한다(해제된 ONNX 세션을 쓰면 네이티브 오류로 앱이 꺼질 수 있다).
+        lock (pending)
+        {
+            if (disposed) return;
+            disposed = true;
+            vad.Dispose();
+        }
     }
 }
