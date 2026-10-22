@@ -8,8 +8,9 @@ using HearingAid.Core.Stt;
 
 namespace HearingAid.Core.Update;
 
-/// <summary>GitHub 최신 릴리스 한 건. ZipUrl은 HearingAid-&lt;버전&gt;-win-x64.zip 자산의 다운로드 주소.</summary>
-public record ReleaseInfo(Version Version, string Tag, string Notes, string ZipUrl, long ZipSize, string? Sha256);
+/// <summary>GitHub 릴리스 한 건. ZipUrl은 HearingAid-&lt;버전&gt;-win-x64.zip 자산의 다운로드 주소.
+/// IsDevBuild는 main에 합쳐질 때마다 자동으로 만들어지는 개발 빌드(프리릴리스)인지.</summary>
+public record ReleaseInfo(Version Version, string Tag, string Notes, string ZipUrl, long ZipSize, string? Sha256, bool IsDevBuild = false);
 
 /// <summary>GitHub Releases로 새 버전을 확인하고, 받아서 풀어 둔 뒤, 새 버전 exe에게 교체를 맡긴다.
 /// 실행 중인 exe는 덮어쓸 수 없으므로 실제 파일 교체는 UpdateApplier(--apply-update 모드)가 한다.</summary>
@@ -38,6 +39,9 @@ public static class AppUpdater
         return TryParseVersion(info, out Version v) ? v : new Version(0, 0, 0);
     }
 
+    /// <summary>화면에 보일 버전 문자열. 정식 버전은 "1.2.3", 개발 빌드(4번째 자리 = 빌드 번호)는 "1.2.3 개발 빌드 45".</summary>
+    public static string Display(Version v) => v.Revision > 0 ? $"{v.ToString(3)} 개발 빌드 {v.Revision}" : v.ToString(3);
+
     /// <summary>"v1.2.3", "1.2.3-beta+abc" 같은 문자열에서 숫자 부분만 읽는다.</summary>
     static bool TryParseVersion(string? text, out Version version)
     {
@@ -51,13 +55,22 @@ public static class AppUpdater
         return true;
     }
 
-    /// <summary>최신 릴리스가 현재 버전보다 새로우면 그 정보를, 아니면 null을 돌려준다.</summary>
-    public static async Task<ReleaseInfo?> CheckAsync(CancellationToken ct = default)
+    const string AssetPrefix = "HearingAid-";
+    const string AssetSuffix = "-win-x64.zip";
+
+    /// <summary>현재 버전보다 새 버전이 있으면 그 정보를, 없으면 null을 돌려준다.
+    /// includeDevBuilds가 false면 정식 릴리스(releases/latest)만 본다. true면 개발 빌드(프리릴리스)까지 포함한
+    /// 최근 릴리스 중 버전이 가장 높은 것을 고른다. 개발 빌드는 태그가 고정(dev)이라 버전을 자산 이름에서 읽는다.</summary>
+    public static async Task<ReleaseInfo?> CheckAsync(bool includeDevBuilds = false, CancellationToken ct = default)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{Repo}/releases/latest");
-        request.Headers.Accept.ParseAdd("application/vnd.github+json");
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TimeSpan.FromSeconds(15));
+
+        string url = includeDevBuilds
+            ? $"https://api.github.com/repos/{Repo}/releases?per_page=20"
+            : $"https://api.github.com/repos/{Repo}/releases/latest";
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Accept.ParseAdd("application/vnd.github+json");
 
         using var response = await Http.SendAsync(request, cts.Token);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -65,18 +78,37 @@ public static class AppUpdater
         response.EnsureSuccessStatusCode();
 
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cts.Token));
-        JsonElement root = doc.RootElement;
+        List<JsonElement> releases = doc.RootElement.ValueKind == JsonValueKind.Array
+            ? doc.RootElement.EnumerateArray().ToList()
+            : new List<JsonElement> { doc.RootElement };
 
-        string tag = root.GetProperty("tag_name").GetString() ?? "";
-        if (!TryParseVersion(tag, out Version latest) || latest <= CurrentVersion)
-            return null;
+        ReleaseInfo? best = null;
+        foreach (JsonElement release in releases)
+        {
+            if (release.TryGetProperty("draft", out JsonElement draft) && draft.GetBoolean()) continue;
+            if (ReadRelease(release) is { } info && (best is null || info.Version > best.Version))
+                best = info;
+        }
+        return best is not null && best.Version > CurrentVersion ? best : null;
+    }
 
-        foreach (JsonElement asset in root.GetProperty("assets").EnumerateArray())
+    /// <summary>릴리스 JSON 하나에서 zip 자산과 버전을 읽는다. 자산이 없거나 버전을 알 수 없으면 null.</summary>
+    static ReleaseInfo? ReadRelease(JsonElement release)
+    {
+        string tag = release.GetProperty("tag_name").GetString() ?? "";
+        bool prerelease = release.TryGetProperty("prerelease", out JsonElement pre) && pre.GetBoolean();
+
+        foreach (JsonElement asset in release.GetProperty("assets").EnumerateArray())
         {
             string name = asset.GetProperty("name").GetString() ?? "";
-            if (!name.StartsWith("HearingAid-", StringComparison.OrdinalIgnoreCase) ||
-                !name.EndsWith("-win-x64.zip", StringComparison.OrdinalIgnoreCase))
+            if (!name.StartsWith(AssetPrefix, StringComparison.OrdinalIgnoreCase) ||
+                !name.EndsWith(AssetSuffix, StringComparison.OrdinalIgnoreCase))
                 continue;
+
+            // 정식 릴리스는 태그(v1.2.3)에서, 개발 빌드는 자산 이름(HearingAid-1.2.3.45-win-x64.zip)에서 버전을 읽는다.
+            string assetVersion = name[AssetPrefix.Length..^AssetSuffix.Length];
+            if (!TryParseVersion(assetVersion, out Version version) && !TryParseVersion(tag, out version))
+                return null;
 
             string? sha256 = asset.TryGetProperty("digest", out JsonElement d) && d.GetString() is { } digest
                 && digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)
@@ -84,14 +116,14 @@ public static class AppUpdater
                 : null;
 
             return new ReleaseInfo(
-                latest, tag,
-                root.TryGetProperty("body", out JsonElement body) ? body.GetString() ?? "" : "",
+                version, tag,
+                release.TryGetProperty("body", out JsonElement body) ? body.GetString() ?? "" : "",
                 asset.GetProperty("browser_download_url").GetString()!,
                 asset.GetProperty("size").GetInt64(),
-                sha256);
+                sha256,
+                prerelease);
         }
-
-        throw new InvalidOperationException($"릴리스 {tag}에 HearingAid-*-win-x64.zip 파일이 없습니다.");
+        return null;
     }
 
     /// <summary>릴리스 zip을 받아 무결성을 확인하고 임시 폴더에 푼다. 풀린 폴더 경로를 돌려준다.</summary>

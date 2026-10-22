@@ -240,10 +240,24 @@ dotnet run
 ```
 
 <details>
+<summary><strong>브랜치와 기여 방식</strong></summary>
+<br/>
+
+[GitHub Flow](https://docs.github.com/get-started/using-github/github-flow)를 따릅니다.
+
+- `main`은 늘 빌드되는 상태로 유지하고, 직접 푸시하지 않습니다.
+- 작업은 `main`에서 짧은 브랜치를 만들어 하고 PR로 합칩니다. 이름은 `feat/…`, `fix/…`, `docs/…`, `ci/…`처럼 종류를 앞에 붙입니다.
+- PR마다 [CI](.github/workflows/ci.yml)가 Windows에서 빌드해 봅니다. 통과해야 합칠 수 있습니다.
+- PR은 squash merge로 합치고, 합친 브랜치는 지웁니다.
+- `main`에 합쳐질 때마다 [개발 빌드](.github/workflows/dev-build.yml)가 `dev` 프리릴리스로 올라갑니다. 앱의 업데이트 채널을 "최신 개발 버전"으로 고른 사용자만 받습니다.
+
+</details>
+
+<details>
 <summary><strong>릴리스 만들기</strong></summary>
 <br/>
 
-1. `HearingAid.csproj`의 `<Version>`을 올립니다.
+1. `HearingAid.csproj`의 `<Version>`을 올리는 PR을 `main`에 합칩니다.
 2. 아래 명령을 실행합니다. [gh CLI](https://cli.github.com) 로그인이 필요합니다.
 
    ```powershell
@@ -251,6 +265,8 @@ dotnet run
    ```
 
    `release\HearingAid-<버전>-win-x64.zip`을 만들고 GitHub 릴리스 `v<버전>`을 생성합니다. `-Publish` 없이 실행하면 zip만 만듭니다.
+
+개발 빌드의 버전은 `<Version>.<빌드 번호>`(예: `1.0.0.45`)입니다. 같은 정식 버전보다는 새롭고, 다음 정식 버전(`1.0.1`)보다는 오래된 것으로 비교됩니다.
 
 > [!IMPORTANT]
 > 앱의 업데이트 확인은 태그 `v<버전>`과 자산 이름 `HearingAid-*-win-x64.zip`에 의존합니다. 이 형식을 바꾸지 마세요.

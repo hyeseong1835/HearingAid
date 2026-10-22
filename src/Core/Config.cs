@@ -112,6 +112,17 @@ public class Config
     [JsonPropertyName("checkForUpdates")]
     public bool CheckForUpdates { get; set; } = true;
 
+    public const string StableChannel = "stable";
+    public const string LatestChannel = "latest";
+
+    /// <summary>업데이트 채널. "stable"이면 정식 릴리스만, "latest"면 main에 합쳐질 때마다 자동으로 만들어지는
+    /// 개발 빌드까지 포함해 가장 최신 버전을 받는다.</summary>
+    [JsonPropertyName("updateChannel")]
+    public string UpdateChannel { get; set; } = StableChannel;
+
+    [JsonIgnore]
+    public bool IncludeDevBuilds => string.Equals(UpdateChannel, LatestChannel, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>동시에 쓸 오디오 소스 목록. 원소는 { "type": "<AudioSourceAttribute 이름>", 생성자 파라미터... } 형태의 flat 객체.</summary>
     [JsonPropertyName("audioSources")]
     public JsonArray? AudioSources { get; set; }
@@ -198,12 +209,23 @@ public class Config
         return node?[key] is JsonValue v && v.TryGetValue(out string? s) ? s : null;
     }
 
-    static void SetBaseValue(string baseConfigPath, string key, string? value)
+    static void SetBaseValue(string baseConfigPath, string key, string? value) =>
+        SetBaseValue(baseConfigPath, key, string.IsNullOrEmpty(value) ? null : JsonValue.Create(value));
+
+    /// <summary>base 파일의 키 하나만 바꾼다(null이면 지운다). 다른 키와 프로필 내용은 건드리지 않는다.</summary>
+    public static void SetBaseValue(string baseConfigPath, string key, JsonNode? value)
     {
         var node = JsonNode.Parse(File.ReadAllText(baseConfigPath)) as JsonObject ?? new JsonObject();
-        if (string.IsNullOrEmpty(value)) node.Remove(key);
+        if (value is null) node.Remove(key);
         else node[key] = value;
         File.WriteAllText(baseConfigPath, node.ToJsonString(SerializeOptions));
+    }
+
+    /// <summary>base 파일(appsettings.json)만 읽어 Config로 만든다. 프로필을 적용하지 않은 앱 전체 설정을 볼 때 쓴다.</summary>
+    public static Config LoadBase(string baseConfigPath)
+    {
+        var node = File.Exists(baseConfigPath) ? JsonNode.Parse(File.ReadAllText(baseConfigPath)) as JsonObject : null;
+        return node?.Deserialize<Config>(DeserializeOptions) ?? new Config();
     }
 
     public static IReadOnlyList<string> ListProfileNames(string profilesDir)

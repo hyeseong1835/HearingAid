@@ -37,9 +37,9 @@ public class MainForm : Form
 
     void BuildUi()
     {
-        Text = $"HearingAid v{AppUpdater.CurrentVersion.ToString(3)}";
-        Width = 1160; Height = 640;
-        MinimumSize = new Size(1080, 420); // 이보다 좁으면 왼쪽(시작·프로필)과 오른쪽 버튼 묶음이 겹친다
+        Text = $"HearingAid v{AppUpdater.Display(AppUpdater.CurrentVersion)}";
+        Width = 1240; Height = 640;
+        MinimumSize = new Size(1160, 420); // 이보다 좁으면 왼쪽(시작·프로필)과 오른쪽 버튼 묶음이 겹친다
         StartPosition = FormStartPosition.CenterScreen;
         Font = Theme.Font;
         KeyPreview = true;
@@ -78,6 +78,7 @@ public class MainForm : Form
             ToolButton("지우기", (s, e) => { list.Items.Clear(); pendingItems.Clear(); UpdateEmptyHint(); }),
             ToolButton("새로고침", (s, e) => RefreshRecodes()),
             ToolButton("문서", (s, e) => DocsForm.Open(this)),
+            ToolButton("설정", async (s, e) => await OpenAppSettingsAsync()),
         ]);
         updateBtn.Size = new Size(124, 36);
         updateBtn.Margin = new Padding(6, 0, 0, 0);
@@ -345,6 +346,18 @@ public class MainForm : Form
         }
     }
 
+    async Task OpenAppSettingsAsync()
+    {
+        using var dlg = new AppSettingsDialog(baseConfigPath);
+        if (dlg.ShowDialog(this) != DialogResult.OK || !dlg.ChannelChanged) return;
+
+        // 채널이 바뀌면 이전 채널에서 찾은 업데이트는 버리고 새 채널로 다시 확인한다.
+        availableUpdate = null;
+        updateBtn.Text = "업데이트";
+        Theme.StyleButton(updateBtn, Theme.ButtonKind.Normal);
+        await CheckForUpdateAsync(silent: true);
+    }
+
     async Task OnUpdateClickedAsync()
     {
         if (availableUpdate is null)
@@ -368,16 +381,16 @@ public class MainForm : Form
         updateBtn.Enabled = false;
         try
         {
-            availableUpdate = await AppUpdater.CheckAsync();
+            availableUpdate = await AppUpdater.CheckAsync(Config.LoadBase(baseConfigPath).IncludeDevBuilds);
             if (availableUpdate is { } r)
             {
-                updateBtn.Text = $"업데이트 v{r.Version.ToString(3)}";
+                updateBtn.Text = r.IsDevBuild ? $"업데이트 (개발 {r.Version.Revision})" : $"업데이트 v{r.Version.ToString(3)}";
                 Theme.StyleButton(updateBtn, Theme.ButtonKind.Primary);
-                status.Text = $"새 버전 v{r.Version.ToString(3)}이(가) 있습니다. 오른쪽 위 업데이트 버튼을 누르세요.";
+                status.Text = $"새 버전 v{AppUpdater.Display(r.Version)}이(가) 있습니다. 오른쪽 위 업데이트 버튼을 누르세요.";
             }
             else if (!silent)
             {
-                MessageBox.Show(this, $"최신 버전입니다. (v{AppUpdater.CurrentVersion.ToString(3)})", "업데이트",
+                MessageBox.Show(this, $"최신 버전입니다. (v{AppUpdater.Display(AppUpdater.CurrentVersion)})", "업데이트",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }

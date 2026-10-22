@@ -42,7 +42,8 @@ public class UpdateDialog : Form
         var header = new Label
         {
             Dock = DockStyle.Top, Height = 52, Padding = new Padding(8, 8, 8, 0),
-            Text = $"새 버전이 있습니다: v{release.Version}  (현재 v{AppUpdater.CurrentVersion})\n" +
+            Text = $"{(release.IsDevBuild ? "새 개발 버전" : "새 버전")}이 있습니다: v{AppUpdater.Display(release.Version)}  " +
+                   $"(현재 v{AppUpdater.Display(AppUpdater.CurrentVersion)})\n" +
                    $"다운로드 크기 {ModelStore.FormatSize(release.ZipSize)}. 설정·프로필·모델은 그대로 유지됩니다.",
         };
 
